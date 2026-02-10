@@ -97,7 +97,6 @@ Enviar tu proyecto es fácil:
    git commit -m "Envío final"
    git push
    ```
-3. **Click en Submit** - Haz click en el botón de envío en la UI de desarrollo y sigue los pasos
 
 ¡Eso es todo! 🎉
 
