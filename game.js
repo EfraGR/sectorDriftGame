@@ -260,6 +260,7 @@ class MenuScene extends Phaser.Scene {
     this._objs = [];
     this.drawBg();
     this.showMain();
+    try{ SFX.startMusic(); }catch(e){}
 
     this.input.once('pointerdown', ()=>{ try{ SFX.startEngine(); SFX.stopEngine(); }catch(e){} });
 
@@ -314,78 +315,20 @@ class MenuScene extends Phaser.Scene {
 
     const t1 = this.addObj(this.add.text(W/2,148,'SECTOR',{fontSize:'72px',fontFamily:'Courier New',color:'#00ffff',stroke:'#003366',strokeThickness:4}).setOrigin(0.5).setDepth(5));
     const t2 = this.addObj(this.add.text(W/2,222,'DRIFT', {fontSize:'72px',fontFamily:'Courier New',color:'#ff6600',stroke:'#330000',strokeThickness:4}).setOrigin(0.5).setDepth(5));
-    this.addObj(this.add.text(W/2,285,'Navigate · Land · Activate · Escape',{fontSize:'13px',fontFamily:'Courier New',color:'#556677'}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2,285,'Navigate - Land - Activate - Escape',{fontSize:'13px',fontFamily:'Courier New',color:'#556677'}).setOrigin(0.5).setDepth(5));
 
     this.tweens.add({targets:[t1,t2],alpha:{from:0.5,to:1},duration:1400,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
 
-    this.btn(W/2, 355, '▶  PLAY',          '#ffff00', ()=>this.scene.start('Game'));
-    this.btn(W/2, 405, '?  INSTRUCTIONS',  '#44ccff', ()=>this.showInstructions());
-    this.btn(W/2, 455, '★  LEADERBOARD',   '#ffcc44', ()=>this.showLeaderboard());
+    this.btn(W/2, 370, '>  PLAY',        '#ffff00', ()=>this.scene.start('Game'));
+    this.btn(W/2, 430, '*  LEADERBOARD', '#ffcc44', ()=>this.showLeaderboard());
 
     this.addObj(this.add.text(W-8,H-10,'v1.0',{fontSize:'9px',fontFamily:'Courier New',color:'#223344'}).setOrigin(1,1).setDepth(5));
-  }
-
-  showInstructions(){
-    this.clearPage();
-
-    this.addObj(this.add.text(W/2,28,'INSTRUCTIONS',{fontSize:'20px',fontFamily:'Courier New',color:'#44ccff',stroke:'#001133',strokeThickness:2,letterSpacing:4}).setOrigin(0.5).setDepth(5));
-    const lineG = this.addObj(this.add.graphics().setDepth(5));
-    lineG.lineStyle(1,0x224466,1); lineG.lineBetween(40,44,W-40,44);
-
-    const sections = [
-      { title:'✦ OBJECTIVE', color:'#ffff00', items:[
-        'Land near each antenna for 2s to activate it.',
-        'Activate them all and a black hole appears — enter it to advance.',
-      ]},
-      { title:'✦ CONTROLS', color:'#44ccff', items:[
-        'WASD / Arrows  →  Rotate and thrust',
-        'SPACE            →  Emergency brake',
-        'K / P1A           →  Shoot  (uses energy)',
-      ]},
-      { title:'✦ RESOURCES', color:'#00ff88', items:[
-        'Land on planets to absorb FUEL, ENERGY and HEALTH.',
-        'Collect floating fuel depots ⛽ to refuel.',
-        'If fuel hits 0 in space you have 3s before game over.',
-      ]},
-      { title:'✦ UPGRADES  (Floating debris)', color:'#ffaa44', items:[
-        '⚡ WEAPON      →  Lv1:1 shot  Lv2:2 shots  Lv3:3 shots (more dmg)',
-        '⛽ EXTRA TANK  →  +15 max fuel per level',
-        '🔧 HEALTH       →  Restores +30 HP on pickup (max 3 times)',
-      ]},
-      { title:'✦ ENEMIES', color:'#ff4444', items:[
-        '🔴 Fighter   – 1 red shot. Sector 1+',
-        '🟠 D.Fighter – 2 orange spread shots. Sector 3+',
-        '🔵 Drone     – rapid cyan burst. Sector 5+',
-        '🟣 Bomber    – slow triple purple shot. Sector 7+',
-        'Enemies dodge planets and chase your last known position.',
-      ]},
-      { title:'✦ PHYSICS', color:'#aa88ff', items:[
-        'Each planet has gravity: the closer you are the stronger the pull.',
-        'Landing at speed >80 damages the ship.',
-        'Asteroids bounce off planets and split when shot.',
-        'Bullets do not pass through planets.',
-      ]},
-    ];
-
-    let y = 60;
-    sections.forEach(sec=>{
-      this.addObj(this.add.text(30,y,sec.title,{fontSize:'12px',fontFamily:'Courier New',color:sec.color,letterSpacing:2}).setDepth(5));
-      y+=18;
-      sec.items.forEach(item=>{
-        this.addObj(this.add.text(44,y,'· '+item,{fontSize:'10px',fontFamily:'Courier New',color:'#7788aa',wordWrap:{width:W-80}}).setDepth(5));
-        y+=14;
-      });
-      y+=6;
-    });
-
-    lineG.lineBetween(40,y,W-40,y);
-    this.btn(W/2, y+30, '←  BACK', '#aaaaaa', ()=>this.showMain());
   }
 
   showLeaderboard(){
     this.clearPage();
 
-    this.addObj(this.add.text(W/2,28,'✦  HALL OF FAME  ✦',{fontSize:'22px',fontFamily:'Courier New',color:'#ffdd00',stroke:'#443300',strokeThickness:3}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2,28,'*  HALL OF FAME  *',{fontSize:'22px',fontFamily:'Courier New',color:'#ffdd00',stroke:'#443300',strokeThickness:3}).setOrigin(0.5).setDepth(5));
 
     const lineG = this.addObj(this.add.graphics().setDepth(5));
     lineG.lineStyle(1,0x334455,0.8);
@@ -400,7 +343,7 @@ class MenuScene extends Phaser.Scene {
     let scores = [];
     try{ scores = JSON.parse(localStorage.getItem('spaceSectorsLB')||'[]'); }catch(e){}
 
-    const medals = ['🥇','🥈','🥉'];
+    const medals = ['1.','2.','3.'];
     if(scores.length===0){
       this.addObj(this.add.text(W/2,200,'NO RECORDS YET\nPlay to appear here',{fontSize:'14px',fontFamily:'Courier New',color:'#223344',align:'center'}).setOrigin(0.5).setDepth(5));
     } else {
@@ -430,7 +373,7 @@ class MenuScene extends Phaser.Scene {
       this.showLeaderboard();
     });
 
-    this.btn(W/2+70, H-55, '←  BACK', '#aaaaaa', ()=>this.showMain());
+    this.btn(W/2+70, H-55, '<  BACK', '#aaaaaa', ()=>this.showMain());
   }
 }
 
@@ -472,7 +415,7 @@ class GameOverScene extends Phaser.Scene {
   }
 
   buildEntryUI(){
-    const msg = this.reason==='fuel' ? '★  OUT OF FUEL  ★' : '★  SHIP DESTROYED  ★';
+    const msg = this.reason==='fuel' ? '*  OUT OF FUEL  *' : '*  SHIP DESTROYED  *';
     const col = this.reason==='fuel' ? '#ffaa00' : '#ff4422';
 
     const title = this.add.text(W/2, 55, msg, {
@@ -486,7 +429,7 @@ class GameOverScene extends Phaser.Scene {
     this.add.text(W/2, 158, `SECTOR ${this.sector}`, {fontSize:'14px', fontFamily:'Courier New', color:'#4488aa'}).setOrigin(0.5);
 
     this.add.text(W/2, 200, 'ENTER YOUR NAME', {fontSize:'13px', fontFamily:'Courier New', color:'#aaccff', letterSpacing:3}).setOrigin(0.5);
-    this.add.text(W/2, 218, '↑↓ CHANGE  ←→ CURSOR  ENTER CONFIRM', {fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:1}).setOrigin(0.5);
+    this.add.text(W/2, 218, '^v CHANGE  <> CURSOR  ENTER CONFIRM', {fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:1}).setOrigin(0.5);
 
     this._letterObjs = [];
     this._cursorGfx = this.add.graphics().setDepth(5);
@@ -503,7 +446,7 @@ class GameOverScene extends Phaser.Scene {
     this._lbGroup = [];
     this.drawLeaderboardPreview();
 
-    this._submitHint = this.add.text(W/2, 320, '▶  PRESS ENTER TO SUBMIT  ◀', {
+    this._submitHint = this.add.text(W/2, 320, '>  PRESS ENTER TO SUBMIT  <', {
       fontSize:'12px', fontFamily:'Courier New', color:'#44ff88', letterSpacing:2
     }).setOrigin(0.5);
     this.tweens.add({targets:this._submitHint, alpha:{from:0.3,to:1}, duration:600, yoyo:true, repeat:-1});
@@ -529,7 +472,7 @@ class GameOverScene extends Phaser.Scene {
     this._lbGroup=[];
     const scores = this.scores.slice(0,8);
 
-    const hdr = this.add.text(W/2, 340, '—  HALL OF FAME  —', {fontSize:'11px', fontFamily:'Courier New', color:'#335566', letterSpacing:4}).setOrigin(0.5);
+    const hdr = this.add.text(W/2, 340, '-  HALL OF FAME  -', {fontSize:'11px', fontFamily:'Courier New', color:'#335566', letterSpacing:4}).setOrigin(0.5);
     this._lbGroup.push(hdr);
 
     scores.forEach((s,i)=>{
@@ -573,7 +516,7 @@ class GameOverScene extends Phaser.Scene {
     this.saveScore(name, this.finalScore, this.sector);
     this.scores = this.loadScores();
 
-    this._submitHint.setText('✦  SUBMITTED  ✦').setColor('#ffff00');
+    this._submitHint.setText('*  SUBMITTED  *').setColor('#ffff00');
     this._cursorGfx.clear();
     this._letterObjs.forEach((l,i)=>{ l.setColor('#ffff00'); });
 
@@ -589,7 +532,7 @@ class GameOverScene extends Phaser.Scene {
     this.drawBg();
     const scores = this.scores;
 
-    this.add.text(W/2, 32, '✦  HALL OF FAME  ✦', {
+    this.add.text(W/2, 32, '*  HALL OF FAME  *', {
       fontSize:'26px', fontFamily:'Courier New', color:'#ffdd00',
       stroke:'#443300', strokeThickness:3
     }).setOrigin(0.5);
@@ -603,7 +546,7 @@ class GameOverScene extends Phaser.Scene {
     this.add.text(W/2+105, 70, 'SECT', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
     lineG.lineBetween(W/2-160,80,W/2+160,80);
 
-    const medals = ['🥇','🥈','🥉'];
+    const medals = ['1.','2.','3.'];
     scores.slice(0,10).forEach((s,i)=>{
       const y = 96 + i*34;
       const isTop = i<3;
@@ -739,11 +682,11 @@ class GameScene extends Phaser.Scene {
       this._hintBg.push(divG);
 
       const steps = [
-        { icon:'🚀', text:'Move the ship\nwith WASD' },
-        { icon:'🪐', text:'Land on\nthe planet' },
-        { icon:'📡', text:'Activate the\nantenna (2s)' },
-        { icon:'🌀', text:'Enter the\nBlack Hole' },
-        { icon:'⚡', text:'With weapon:\npress K to shoot' },
+        { icon:'[M]', text:'Move the ship\nwith WASD' },
+        { icon:'[PL]', text:'Land on\nthe planet' },
+        { icon:'[A]', text:'Activate the\nantenna (2s)' },
+        { icon:'>>', text:'Enter the\nBlack Hole' },
+        { icon:'[W]', text:'With weapon:\npress K to shoot' },
       ];
 
       steps.forEach((step, i) => {
@@ -856,7 +799,6 @@ class GameScene extends Phaser.Scene {
         }
         return null;
       };
-
 
       const allUpgrades = ['weapon','extraTank'].filter(t=>(this.upgrades[t]||0)<3);
       const itemPool = [{kind:'fuel'}, {kind:'health'}];
@@ -1073,7 +1015,7 @@ class GameScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(4);
     const amount = 25 + level*15 + Phaser.Math.Between(0, 15);
     this.drawFuelDepotGfx(g, x, y, level);
-    const label = this.add.text(x, y + 22 + level*2, `⛽ +${amount}`, {fontSize:'8px', fontFamily:'Courier New', color:'#ffaa00'}).setOrigin(0.5).setDepth(5);
+    const label = this.add.text(x, y + 22 + level*2, `[F] +${amount}`, {fontSize:'8px', fontFamily:'Courier New', color:'#ffaa00'}).setOrigin(0.5).setDepth(5);
     this.fuelDepots = this.fuelDepots || [];
     this.fuelDepots.push({x, y, gfx:g, label, amount, collected:false, level});
   }
@@ -1135,7 +1077,6 @@ class GameScene extends Phaser.Scene {
   }
 
   createEnemy(x,y){
-
 
 
 
@@ -1505,8 +1446,8 @@ class GameScene extends Phaser.Scene {
     this.upgradePanel = this.add.graphics().setDepth(20);
     this.upgradeIcons = {};
     const upgDefs = [
-      { key:'weapon',    icon:'⚡', label:'WEAPON',   color:'#ffdd00' },
-      { key:'extraTank', icon:'⛽', label:'TANK', color:'#ff8800' },
+      { key:'weapon',    icon:'[W]', label:'WEAPON',   color:'#ffdd00' },
+      { key:'extraTank', icon:'[F]', label:'TANK', color:'#ff8800' },
     ];
     this._upgDefs = upgDefs;
 
@@ -1519,7 +1460,7 @@ class GameScene extends Phaser.Scene {
       const uy = H - 60;
       const ico   = this.add.text(ux, uy,    u.icon,  {fontSize:'18px'}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
       const lbl   = this.add.text(ux, uy+16, u.label, {fontSize:'7px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
-      const stars = this.add.text(ux, uy-14, '○○○',   {fontSize:'8px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
+      const stars = this.add.text(ux, uy-14, 'ooo',   {fontSize:'8px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
       this.upgradeIcons[u.key] = {ico, lbl, stars, color:u.color, ux, uy};
     });
   }
@@ -1528,7 +1469,6 @@ class GameScene extends Phaser.Scene {
     const s = this.ship;
     const g = this.uiGfx;
     g.clear();
-
 
     const bx = 10, bw = 100, bh = 7, gap = 14;
     const maxFuel = 100 + (this.upgrades.extraTank||0)*15;
@@ -1592,7 +1532,7 @@ class GameScene extends Phaser.Scene {
       ic.ico.setAlpha(alpha);
       ic.lbl.setAlpha(alpha);
 
-      const starStr = '●'.repeat(lvl) + '○'.repeat(3-lvl);
+      const starStr = '*'.repeat(lvl) + 'o'.repeat(3-lvl);
       ic.stars.setText(starStr).setAlpha(alpha);
 
       const hx = parseInt(u.color.replace('#','0x'));
@@ -1606,13 +1546,13 @@ class GameScene extends Phaser.Scene {
   startTutorial(){
     if(this.sector!==1) return;
     const msgs = [
-      { t:1000,  txt:'⬆ USE WASD / ARROWS to thrust and rotate the ship',  dur:3500 },
-      { t:5000,  txt:'📡 Land near antennas to activate them (2s)', dur:3800 },
-      { t:9500,  txt:'⚡ Activate ALL antennas in the sector',                dur:3200 },
-      { t:13500, txt:'🌀 A BLACK HOLE appears — enter it to advance!', dur:3800 },
-      { t:18000, txt:'🔧 Collect floating debris to upgrade your ship',        dur:3200 },
-      { t:22000, txt:'⛽ Land on planets to recharge fuel and energy', dur:3500 },
-      { t:26000, txt:'⚡ Got a weapon? Press K to shoot and defend yourself from turrets and enemies', dur:4200 },
+      { t:1000,  txt:'^ USE WASD / ARROWS to thrust and rotate the ship',  dur:3500 },
+      { t:5000,  txt:'[A] Land near antennas to activate them (2s)', dur:3800 },
+      { t:9500,  txt:'[W] Activate ALL antennas in the sector',                dur:3200 },
+      { t:13500, txt:'>> A BLACK HOLE appears - enter it to advance!', dur:3800 },
+      { t:18000, txt:'[L] Collect floating debris to upgrade your ship',        dur:3200 },
+      { t:22000, txt:'[F] Land on planets to recharge fuel and energy', dur:3500 },
+      { t:26000, txt:'[W] Got a weapon? Press K to shoot and defend yourself from turrets and enemies', dur:4200 },
     ];
     msgs.forEach(m=>{
       this.time.delayedCall(m.t, ()=>{
@@ -1629,11 +1569,11 @@ class GameScene extends Phaser.Scene {
 
   showUpgradePopup(type, level=1){
     const names = {weapon:'ARMAMENT', extraTank:'EXTRA TANK', health:'HEALTH'};
-    const stars = '★'.repeat(level)+'☆'.repeat(3-level);
-    this.showMsg(`✦ ${names[type]||type}  ${stars}  ACQUIRED`, 2500);
+    const stars = '*'.repeat(level)+'o'.repeat(3-level);
+    this.showMsg(`* ${names[type]||type}  ${stars}  ACQUIRED`, 2500);
     if(type==='weapon'){
       this.time.delayedCall(2600, ()=>{
-        this.showMsg('⚡ Press K to shoot!', 3000);
+        this.showMsg('[W] Press K to shoot!', 3000);
       });
     }
     this.score += 50;
@@ -1660,7 +1600,6 @@ class GameScene extends Phaser.Scene {
     const k = this.keys;
     if(s.health<=0){
       if(this._engineOn){ this._engineOn=false; SFX.stopEngine(); }
-      SFX.stopMusic(0.5);
       SFX.shipDestroy();
       this.scene.start('GameOver',{score:this.score,sector:this.sector,reason:'hull'});
       return;
@@ -1669,9 +1608,9 @@ class GameScene extends Phaser.Scene {
       if(this._engineOn){ this._engineOn=false; SFX.stopEngine(); }
       if(!this._fuelEmptyTimer) this._fuelEmptyTimer=0;
       this._fuelEmptyTimer+=dt;
-      this.msgText.setText('⚠ OUT OF FUEL — ADRIFT (' + Math.ceil(3-this._fuelEmptyTimer) + 's)');
+      this.msgText.setText('! OUT OF FUEL - ADRIFT (' + Math.ceil(3-this._fuelEmptyTimer) + 's)');
       this.msgText.setColor('#ff4400');
-      if(this._fuelEmptyTimer>=3){ SFX.stopMusic(0.5); SFX.shipDestroy(); this.scene.start('GameOver',{score:this.score,sector:this.sector,reason:'fuel'}); return; }
+      if(this._fuelEmptyTimer>=3){ SFX.shipDestroy(); this.scene.start('GameOver',{score:this.score,sector:this.sector,reason:'fuel'}); return; }
     } else {
       if(this._fuelEmptyTimer){ this._fuelEmptyTimer=0; this.msgText.setColor('#ffff00'); }
     }
@@ -1806,7 +1745,7 @@ class GameScene extends Phaser.Scene {
               if(w.type==='health'){
 
                 this.ship.health = Math.min(100, this.ship.health + 30);
-                this.showMsg('🔧 +30 HEALTH RESTORED', 2000);
+                this.showMsg('[L] +30 HEALTH RESTORED', 2000);
                 this.score += 30;
               } else {
                 this.upgrades[w.type] = Math.min(3, (this.upgrades[w.type]||0)+1);
@@ -1849,7 +1788,7 @@ class GameScene extends Phaser.Scene {
       } else {
 
         if(!this._noEnergyFlash || this._noEnergyFlash<=0){
-          this.showMsg('⚡ NOT ENOUGH ENERGY TO SHOOT', 1200);
+          this.showMsg('[W] NOT ENOUGH ENERGY TO SHOOT', 1200);
           this._noEnergyFlash = 1.5;
         }
       }
@@ -2400,7 +2339,6 @@ class GameScene extends Phaser.Scene {
         this.landingTimer = 0;
         this.landingTower = null;
         SFX.sectorStart();
-        SFX.startMusic();
         this.showMsg(`SECTOR ${this.sector} STARTED!`, 2500);
 
         this.spawnShipBeacon(sp.x, sp.y);
@@ -2427,7 +2365,7 @@ class GameScene extends Phaser.Scene {
     }});
 
     const arrowGfx = this.add.graphics().setDepth(31);
-    const arrowLabel = this.add.text(sx, sy-38, '◆ SHIP ◆', {
+    const arrowLabel = this.add.text(sx, sy-38, '* SHIP *', {
       fontSize:'10px', fontFamily:'Courier New', color:'#00ffff', stroke:'#003333', strokeThickness:2
     }).setOrigin(0.5).setDepth(31);
 
