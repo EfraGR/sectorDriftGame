@@ -342,22 +342,13 @@ class MenuScene extends Phaser.Scene {
   drawBg(){
     const g = this.add.graphics().setDepth(0);
     g.fillStyle(0x000000,1); g.fillRect(0,0,W,H);
-    
-    for(let y=0;y<H;y+=4){ g.fillStyle(0x000011,0.3); g.fillRect(0,y,W,2); }
-    
+
     for(let i=0;i<220;i++){
       const sz=Math.random()<0.04?2:0.8;
       g.fillStyle(0xffffff,Phaser.Math.FloatBetween(0.1,0.7));
       g.fillCircle(Phaser.Math.Between(0,W),Phaser.Math.Between(0,H),sz);
     }
-    
-    g.lineStyle(1,0x001133,0.4);
-    for(let x=0;x<=W;x+=28){ g.lineBetween(x,H,W/2,H*0.72); }
-    g.lineStyle(1,0x001133,0.25);
-    for(let i=0;i<8;i++){
-      const t=i/8, y=H*0.72+t*(H-H*0.72);
-      g.lineBetween(0,y,W,y);
-    }
+
     this._bgGfx = g;
   }
 
