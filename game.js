@@ -1471,13 +1471,13 @@ class GameScene extends Phaser.Scene {
   startTutorial(){
     if(this.sector!==1) return;
     const msgs = [
-      { t:1000,  txt:'⬆ USE WASD / ARROWS to thrust and rotate the ship',  dur:3500 },
-      { t:5000,  txt:'📡 Land near antennas to activate them (2s)', dur:3800 },
-      { t:9500,  txt:'⚡ Activate ALL antennas in the sector',                dur:3200 },
-      { t:13500, txt:'🌀 A BLACK HOLE appears — enter it to advance!', dur:3800 },
-      { t:18000, txt:'🔧 Collect floating debris to upgrade your ship',        dur:3200 },
-      { t:22000, txt:'⛽ Land on planets to recharge fuel and energy', dur:3500 },
-      { t:26000, txt:'⚡ Got a weapon? Press K to shoot and defend yourself from turrets and enemies', dur:4200 },
+      { t:1000,  txt:'USE WASD / ARROWS to thrust and rotate the ship',  dur:3500 },
+      { t:5000,  txt:'Land near antennas to activate them (2s)', dur:3800 },
+      { t:9500,  txt:'Activate ALL antennas in the sector',                dur:3200 },
+      { t:13500, txt:'A BLACK HOLE appears — enter it to advance!', dur:3800 },
+      { t:18000, txt:'Collect floating debris to upgrade your ship',        dur:3200 },
+      { t:22000, txt:'Land on planets to recharge fuel and energy', dur:3500 },
+      { t:26000, txt:'Got a weapon? Press K to shoot and defend yourself from turrets and enemies', dur:4200 },
     ];
     msgs.forEach(m=>{
       this.time.delayedCall(m.t, ()=>{
@@ -1715,7 +1715,7 @@ class GameScene extends Phaser.Scene {
       } else {
 
         if(!this._noEnergyFlash || this._noEnergyFlash<=0){
-          this.showMsg('⚡ NOT ENOUGH ENERGY TO SHOOT', 1200);
+          this.showMsg('NOT ENOUGH ENERGY TO SHOOT', 1200);
           this._noEnergyFlash = 1.5;
         }
       }
