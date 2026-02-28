@@ -1,5 +1,310 @@
 const W = 800, H = 600;
 
+
+const F = (() => {
+  let ctx = null;
+  const init = () => {
+    if(!ctx) ctx = new (window.AudioContext||window.webkitAudioContext)();
+    if(ctx.state==='suspended') ctx.resume();
+  };
+
+  
+  let master = null;
+  const getMaster = () => {
+    init();
+    if(!master){ master = ctx.createGain(); master.gain.value = 0.55; master.connect(ctx.destination); }
+    return master;
+  };
+
+  const osc = (type, freq, gainVal, duration, freqEnd, detune=0) => {
+    const ac = ctx;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(gainVal, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration);
+    g.connect(getMaster());
+    const o = ac.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, ac.currentTime);
+    if(freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, ac.currentTime + duration);
+    o.detune.value = detune;
+    o.connect(g);
+    o.start();
+    o.stop(ac.currentTime + duration);
+  };
+
+  const noise = (gainVal, duration, filterFreq=2000) => {
+    init();
+    const bufSize = ctx.sampleRate * duration;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for(let i=0;i<bufSize;i++) data[i] = Math.random()*2-1;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'bandpass';
+    filt.frequency.value = filterFreq;
+    filt.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gainVal, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    src.connect(filt); filt.connect(g); g.connect(getMaster());
+    src.start(); src.stop(ctx.currentTime + duration);
+  };
+
+  let engineNode = null, engineGain = null;
+  let enginePlaying = false;
+
+  return {
+    
+    startEngine() {
+      init();
+      if(enginePlaying) return;
+      enginePlaying = true;
+      engineGain = ctx.createGain();
+      engineGain.gain.setValueAtTime(0.001, ctx.currentTime);
+      engineGain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.08);
+      engineGain.connect(getMaster());
+      engineNode = ctx.createOscillator();
+      engineNode.type = 'sawtooth';
+      engineNode.frequency.value = 80;
+      
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      lfo.frequency.value = 14;
+      lfoGain.gain.value = 18;
+      lfo.connect(lfoGain); lfoGain.connect(engineNode.frequency);
+      lfo.start(); engineNode.connect(engineGain); engineNode.start();
+      this._engineLfo = lfo;
+    },
+    stopEngine() {
+      if(!enginePlaying || !engineGain) return;
+      enginePlaying = false;
+      engineGain.gain.setValueAtTime(engineGain.gain.value, ctx.currentTime);
+      engineGain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      const n = engineNode, g = engineGain, lfo = this._engineLfo;
+      setTimeout(()=>{ try{n.stop();g.disconnect();lfo.stop();}catch(e){} }, 180);
+      engineNode = null; engineGain = null;
+    },
+
+    shoot() {
+      init();
+      osc('square', 680, 0.22, 0.08, 180);
+      noise(0.12, 0.06, 3000);
+    },
+
+    towerActivate() {
+      init();
+      
+      [330, 440, 660, 880].forEach((f,i) => {
+        setTimeout(()=>{ osc('sine', f, 0.28, 0.55, f*1.2); }, i*55);
+      });
+    },
+
+    allTowersActivated() {
+      init();
+      
+      [262,330,392,523,659,784].forEach((f,i)=>{
+        setTimeout(()=>{ osc('triangle', f, 0.35, 0.7, f*1.05); }, i*70);
+      });
+    },
+
+    portalSpawn() {
+      init();
+      
+      osc('sawtooth', 55, 0.4, 1.8, 28);
+      osc('sine',    110, 0.25, 1.4, 220);
+      setTimeout(()=>{ noise(0.2, 0.6, 400); }, 400);
+    },
+
+    portalEnter() {
+      init();
+      
+      osc('sawtooth', 120, 0.5, 1.2, 2400);
+      noise(0.3, 1.0, 1200);
+      osc('sine', 220, 0.3, 1.2, 3000);
+    },
+
+    collectItem() {
+      init();
+      osc('sine', 523, 0.25, 0.25, 880);
+      osc('sine', 659, 0.18, 0.2, 1046, 0);
+    },
+
+    damage() {
+      init();
+      noise(0.35, 0.18, 180);
+      osc('sawtooth', 90, 0.3, 0.2, 60);
+    },
+
+    land() {
+      init();
+      osc('sine', 200, 0.15, 0.3, 120);
+      noise(0.08, 0.15, 600);
+    },
+
+    enemyDie() {
+      init();
+      noise(0.28, 0.3, 350);
+      osc('sawtooth', 150, 0.2, 0.3, 55);
+    },
+
+    sectorStart() {
+      init();
+      
+      [880, 660, 440, 880].forEach((f,i)=>{
+        setTimeout(()=>{ osc('square', f, 0.22, 0.18); }, i*90);
+      });
+    },
+
+    brake() {
+      init();
+      noise(0.1, 0.12, 800);
+    },
+
+    shipDestroy() {
+      init();
+      
+      osc('sine', 60, 0.6, 1.4, 20);
+      
+      osc('sawtooth', 180, 0.45, 0.9, 40);
+      
+      noise(0.5, 0.25, 2200);
+      
+      setTimeout(()=>{ noise(0.3, 0.4, 600); }, 120);
+      setTimeout(()=>{ osc('sawtooth', 90, 0.25, 0.7, 30); }, 200);
+      
+      setTimeout(()=>{ noise(0.18, 0.8, 200); }, 350);
+      setTimeout(()=>{ osc('sine', 45, 0.2, 1.0, 18); }, 400);
+    },
+
+    
+    _musicGain: null,
+    _musicNodes: [],
+    _musicRunning: false,
+
+    startMusic() {
+      init();
+      if(this._musicRunning) return;
+      this._musicRunning = true;
+
+      
+      const musicBus = ctx.createGain();
+      musicBus.gain.value = 0; 
+      musicBus.connect(ctx.destination);
+      this._musicGain = musicBus;
+
+      
+      musicBus.gain.linearRampToValueAtTime(2.18, ctx.currentTime + 4);
+
+      
+      
+      const chords = [
+        [110, 165, 220, 277],   
+        [87,  130, 174, 220],   
+        [65,  98,  130, 196],   
+        [98,  147, 196, 247],   
+      ];
+      const chordDur = 8; 
+      let chordIdx = 0;
+      const nodes = [];
+
+      const playChord = () => {
+        if(!this._musicRunning) return;
+        const freqs = chords[chordIdx % chords.length];
+        freqs.forEach((freq, fi) => {
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0, ctx.currentTime);
+          g.gain.linearRampToValueAtTime(0.06 - fi*0.008, ctx.currentTime + 2.5);
+          g.gain.setValueAtTime(0.06 - fi*0.008, ctx.currentTime + chordDur - 2);
+          g.gain.linearRampToValueAtTime(0, ctx.currentTime + chordDur);
+          g.connect(musicBus);
+
+          const o = ctx.createOscillator();
+          o.type = fi===0 ? 'sine' : 'triangle';
+          o.frequency.value = freq;
+          
+          const lfo = ctx.createOscillator();
+          const lfoG = ctx.createGain();
+          lfo.frequency.value = 0.18 + fi*0.04;
+          lfoG.gain.value = freq * 0.006;
+          lfo.connect(lfoG); lfoG.connect(o.frequency);
+          lfo.start(); o.connect(g); o.start();
+          o.stop(ctx.currentTime + chordDur + 0.1);
+          lfo.stop(ctx.currentTime + chordDur + 0.1);
+          nodes.push(o, lfo, g);
+        });
+        chordIdx++;
+      };
+
+      
+      const drone = ctx.createOscillator();
+      const droneGain = ctx.createGain();
+      drone.type = 'sine';
+      drone.frequency.value = 36.7; 
+      droneGain.gain.value = 0.04;
+      drone.connect(droneGain); droneGain.connect(musicBus);
+      drone.start();
+      nodes.push(drone, droneGain);
+
+      
+      const breathLfo = ctx.createOscillator();
+      const breathGain = ctx.createGain();
+      breathLfo.frequency.value = 0.07;
+      breathGain.gain.value = 0.025;
+      breathLfo.connect(breathGain); breathGain.connect(droneGain.gain);
+      breathLfo.start();
+      nodes.push(breathLfo, breathGain);
+
+      
+      const shimmerFreqs = [880, 1108, 1320, 1760, 987, 1174];
+      const playShimmer = () => {
+        if(!this._musicRunning) return;
+        const freq = shimmerFreqs[Math.floor(Math.random()*shimmerFreqs.length)];
+        const g2 = ctx.createGain();
+        g2.gain.setValueAtTime(0, ctx.currentTime);
+        g2.gain.linearRampToValueAtTime(0.022, ctx.currentTime + 0.8);
+        g2.gain.linearRampToValueAtTime(0, ctx.currentTime + 3.5);
+        g2.connect(musicBus);
+        const o2 = ctx.createOscillator();
+        o2.type = 'sine';
+        o2.frequency.value = freq;
+        o2.connect(g2); o2.start(); o2.stop(ctx.currentTime + 3.6);
+        nodes.push(o2, g2);
+        const nextShimmer = 4000 + Math.random()*8000;
+        setTimeout(playShimmer, nextShimmer);
+      };
+      setTimeout(playShimmer, 6000);
+
+      
+      playChord();
+      const chordInterval = setInterval(()=>{
+        if(!this._musicRunning){ clearInterval(chordInterval); return; }
+        playChord();
+      }, chordDur * 1000);
+      nodes.push({ stop: ()=> clearInterval(chordInterval) });
+
+      this._musicNodes = nodes;
+    },
+
+    stopMusic(fadeDur=2) {
+      if(!this._musicRunning || !this._musicGain) return;
+      this._musicRunning = false;
+      const g = this._musicGain;
+      g.gain.setValueAtTime(g.gain.value, ctx.currentTime);
+      g.gain.linearRampToValueAtTime(0, ctx.currentTime + fadeDur);
+      setTimeout(()=>{
+        this._musicNodes.forEach(n=>{ try{ if(n.stop) n.stop(); if(n.disconnect) n.disconnect(); }catch(e){} });
+        this._musicNodes = [];
+        try{ g.disconnect(); }catch(e){}
+        this._musicGain = null;
+      }, (fadeDur+0.3)*1000);
+    },
+
+    unlock() { this.init = init; }
+  };
+})();
+
+
 function dist(x1,y1,x2,y2){ return Math.sqrt((x2-x1)**2+(y2-y1)**2); }
 function angleTo(x1,y1,x2,y2){ return Math.atan2(y2-y1,x2-x1); }
 function lerp(a,b,t){ return a+(b-a)*t; }
@@ -22,28 +327,30 @@ class MenuScene extends Phaser.Scene {
   constructor(){ super('Menu'); }
 
   create(){
-    this._page = 'main';
+    this._page = 'main'; 
     this._objs = [];
     this.drawBg();
     this.showMain();
-
+    
+    this.input.once('pointerdown', ()=>{ try{ F.startEngine(); F.stopEngine(); }catch(e){} });
+    
     this.input.keyboard.on('keydown', e => {
-      if(e.key==='START1') this.scene.start('Game');
+      if(e.key==='START1') this.scene.start('g');
     });
   }
 
   drawBg(){
     const g = this.add.graphics().setDepth(0);
     g.fillStyle(0x000000,1); g.fillRect(0,0,W,H);
-
+    
     for(let y=0;y<H;y+=4){ g.fillStyle(0x000011,0.3); g.fillRect(0,y,W,2); }
-
+    
     for(let i=0;i<220;i++){
       const sz=Math.random()<0.04?2:0.8;
       g.fillStyle(0xffffff,Phaser.Math.FloatBetween(0.1,0.7));
       g.fillCircle(Phaser.Math.Between(0,W),Phaser.Math.Between(0,H),sz);
     }
-
+    
     g.lineStyle(1,0x001133,0.4);
     for(let x=0;x<=W;x+=28){ g.lineBetween(x,H,W/2,H*0.72); }
     g.lineStyle(1,0x001133,0.25);
@@ -63,9 +370,9 @@ class MenuScene extends Phaser.Scene {
 
   btn(x, y, label, color, cb){
     const t = this.addObj(
-      this.add.text(x, y, label, {
-        fontSize:'22px', fontFamily:'Courier New', color, stroke:'#000000', strokeThickness:2
-      }).setOrigin(0.5).setInteractive().setDepth(10)
+        this.add.text(x, y, label, {
+          fontSize:'22px', fontFamily:'Courier New', color, stroke:'#000000', strokeThickness:2
+        }).setOrigin(0.5).setInteractive().setDepth(10)
     );
     t.on('pointerover', ()=>{ t.setColor('#ffffff'); t.setScale(1.06); });
     t.on('pointerout',  ()=>{ t.setColor(color); t.setScale(1); });
@@ -75,28 +382,89 @@ class MenuScene extends Phaser.Scene {
 
   showMain(){
     this.clearPage();
-
+    
     const t1 = this.addObj(this.add.text(W/2,148,'SECTOR',{fontSize:'72px',fontFamily:'Courier New',color:'#00ffff',stroke:'#003366',strokeThickness:4}).setOrigin(0.5).setDepth(5));
     const t2 = this.addObj(this.add.text(W/2,222,'DRIFT', {fontSize:'72px',fontFamily:'Courier New',color:'#ff6600',stroke:'#330000',strokeThickness:4}).setOrigin(0.5).setDepth(5));
-    this.addObj(this.add.text(W/2,285,'Navigate - Land - Activate - Escape',{fontSize:'13px',fontFamily:'Courier New',color:'#556677'}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2,285,'Navigate · Land · Activate · Escape',{fontSize:'13px',fontFamily:'Courier New',color:'#556677'}).setOrigin(0.5).setDepth(5));
 
     this.tweens.add({targets:[t1,t2],alpha:{from:0.5,to:1},duration:1400,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
 
-    this.btn(W/2, 370, '>  PLAY',        '#ffff00', ()=>this.scene.start('Game'));
-    this.btn(W/2, 430, '*  LEADERBOARD', '#ffcc44', ()=>this.showLeaderboard());
+    this.btn(W/2, 355, '▶  PLAY',          '#ffff00', ()=>this.scene.start('g'));
+    this.btn(W/2, 405, '?  INSTRUCTIONS',  '#44ccff', ()=>this.showInstructions());
+    this.btn(W/2, 455, '★  LEADERBOARD',   '#ffcc44', ()=>this.showLeaderboard());
 
+    
     this.addObj(this.add.text(W-8,H-10,'v1.0',{fontSize:'9px',fontFamily:'Courier New',color:'#223344'}).setOrigin(1,1).setDepth(5));
+  }
+
+  showInstructions(){
+    this.clearPage();
+
+    
+    this.addObj(this.add.text(W/2,28,'INSTRUCTIONS',{fontSize:'20px',fontFamily:'Courier New',color:'#44ccff',stroke:'#001133',strokeThickness:2,letterSpacing:4}).setOrigin(0.5).setDepth(5));
+    const lineG = this.addObj(this.add.graphics().setDepth(5));
+    lineG.lineStyle(1,0x224466,1); lineG.lineBetween(40,44,W-40,44);
+
+    const sections = [
+      { title:'✦ OBJECTIVE', color:'#ffff00', items:[
+          'Land near each antenna for 2s to activate it.',
+          'Activate them all and a black hole appears — enter it to advance.',
+        ]},
+      { title:'✦ CONTROLS', color:'#44ccff', items:[
+          'WASD / Arrows  →  Rotate and thrust',
+          'SPACE            →  Emergency brake',
+          'K / P1A           →  Shoot  (uses energy)',
+        ]},
+      { title:'✦ RESOURCES', color:'#00ff88', items:[
+          'Land on planets to absorb FUEL, ENERGY and HEALTH.',
+          'Collect floating fuel depots ⛽ to refuel.',
+          'If fuel hits 0 in space you have 3s before g over.',
+        ]},
+      { title:'✦ UPGRADES  (Floating debris)', color:'#ffaa44', items:[
+          '⚡ WEAPON      →  Lv1:1 shot  Lv2:2 shots  Lv3:3 shots (more dmg)',
+          '⛽ EXTRA TANK  →  +15 max fuel per level',
+          '🔧 HEALTH       →  Restores +30 HP on pickup (max 3 times)',
+        ]},
+      { title:'✦ ENEMIES', color:'#ff4444', items:[
+          '🔴 Fighter   – 1 red shot. Sector 1+',
+          '🟠 D.Fighter – 2 orange spread shots. Sector 3+',
+          '🔵 Drone     – rapid cyan burst. Sector 5+',
+          '🟣 Bomber    – slow triple purple shot. Sector 7+',
+          'Enemies dodge planets and chase your last known position.',
+        ]},
+      { title:'✦ PHYSICS', color:'#aa88ff', items:[
+          'Each planet has gravity: the closer you are the stronger the pull.',
+          'Landing at speed >80 damages the ship.',
+          'Asteroids bounce off planets and split when shot.',
+          'Bullets do not pass through planets.',
+        ]},
+    ];
+
+    let y = 60;
+    sections.forEach(sec=>{
+      this.addObj(this.add.text(30,y,sec.title,{fontSize:'12px',fontFamily:'Courier New',color:sec.color,letterSpacing:2}).setDepth(5));
+      y+=18;
+      sec.items.forEach(item=>{
+        this.addObj(this.add.text(44,y,'· '+item,{fontSize:'10px',fontFamily:'Courier New',color:'#7788aa',wordWrap:{width:W-80}}).setDepth(5));
+        y+=14;
+      });
+      y+=6;
+    });
+
+    lineG.lineBetween(40,y,W-40,y);
+    this.btn(W/2, y+30, '←  BACK', '#aaaaaa', ()=>this.showMain());
   }
 
   showLeaderboard(){
     this.clearPage();
 
-    this.addObj(this.add.text(W/2,28,'*  HALL OF FAME  *',{fontSize:'22px',fontFamily:'Courier New',color:'#ffdd00',stroke:'#443300',strokeThickness:3}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2,28,'✦  HALL OF FAME  ✦',{fontSize:'22px',fontFamily:'Courier New',color:'#ffdd00',stroke:'#443300',strokeThickness:3}).setOrigin(0.5).setDepth(5));
 
     const lineG = this.addObj(this.add.graphics().setDepth(5));
     lineG.lineStyle(1,0x334455,0.8);
     lineG.lineBetween(40,50,W-40,50);
 
+    
     this.addObj(this.add.text(W/2-130,64,'#',      {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0.5).setDepth(5));
     this.addObj(this.add.text(W/2-88, 64,'NAME', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
     this.addObj(this.add.text(W/2+16, 64,'PUNTOS', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
@@ -106,7 +474,7 @@ class MenuScene extends Phaser.Scene {
     let scores = [];
     try{ scores = JSON.parse(localStorage.getItem('spaceSectorsLB')||'[]'); }catch(e){}
 
-    const medals = ['1.','2.','3.'];
+    const medals = ['🥇','🥈','🥉'];
     if(scores.length===0){
       this.addObj(this.add.text(W/2,200,'NO RECORDS YET\nPlay to appear here',{fontSize:'14px',fontFamily:'Courier New',color:'#223344',align:'center'}).setOrigin(0.5).setDepth(5));
     } else {
@@ -136,7 +504,7 @@ class MenuScene extends Phaser.Scene {
       this.showLeaderboard();
     });
 
-    this.btn(W/2+70, H-55, '<  BACK', '#aaaaaa', ()=>this.showMain());
+    this.btn(W/2+70, H-55, '←  BACK', '#aaaaaa', ()=>this.showMain());
   }
 }
 
@@ -146,54 +514,59 @@ class GameOverScene extends Phaser.Scene {
 
   create(){
     this.nameChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
-    this.nameIdx = [0,0,0];
+    this.nameIdx = [0,0,0]; 
     this.cursor = 0;
     this.submitted = false;
     this.scores = this.loadScores();
-    this.phase = 'entry';
+    this.phase = 'entry'; 
 
     this.drawBg();
     this.buildEntryUI();
 
+    
     this.input.keyboard.on('keydown', e => this.handleKey(e));
   }
 
   drawBg(){
     const g = this.add.graphics();
     g.fillStyle(0x000000,1); g.fillRect(0,0,W,H);
-
+    
     for(let y=0;y<H;y+=4){
       g.fillStyle(0x000011, 0.35); g.fillRect(0,y,W,2);
     }
-
+    
     for(let i=0;i<200;i++){
       const sz=Math.random()<0.05?1.5:0.8;
       g.fillStyle(0xffffff, Phaser.Math.FloatBetween(0.1,0.6));
       g.fillCircle(Phaser.Math.Between(0,W), Phaser.Math.Between(0,H), sz);
     }
-
+    
     g.lineStyle(1,0x001133,0.5);
     for(let x=0;x<W;x+=32) g.lineBetween(x,H*0.7,W/2,H);
     for(let x=0;x<W;x+=32) g.lineBetween(x,H,W/2,H*0.7);
   }
 
   buildEntryUI(){
-    const msg = this.reason==='fuel' ? '*  OUT OF FUEL  *' : '*  SHIP DESTROYED  *';
+    const msg = this.reason==='fuel' ? '★  OUT OF FUEL  ★' : '★  SHIP DESTROYED  ★';
     const col = this.reason==='fuel' ? '#ffaa00' : '#ff4422';
 
+    
     const title = this.add.text(W/2, 55, msg, {
       fontSize:'22px', fontFamily:'Courier New', color:col,
       stroke:'#000000', strokeThickness:3
     }).setOrigin(0.5);
     this.tweens.add({targets:title, alpha:{from:0.6,to:1}, duration:180, yoyo:true, repeat:-1});
 
+    
     this.add.text(W/2, 98, `SCORE`, {fontSize:'11px', fontFamily:'Courier New', color:'#445566', letterSpacing:4}).setOrigin(0.5);
     this.add.text(W/2, 118, `${this.finalScore}`, {fontSize:'36px', fontFamily:'Courier New', color:'#ffff00', stroke:'#555500', strokeThickness:3}).setOrigin(0.5);
     this.add.text(W/2, 158, `SECTOR ${this.sector}`, {fontSize:'14px', fontFamily:'Courier New', color:'#4488aa'}).setOrigin(0.5);
 
+    
     this.add.text(W/2, 200, 'ENTER YOUR NAME', {fontSize:'13px', fontFamily:'Courier New', color:'#aaccff', letterSpacing:3}).setOrigin(0.5);
-    this.add.text(W/2, 218, '^v CHANGE  <> CURSOR  ENTER CONFIRM', {fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:1}).setOrigin(0.5);
+    this.add.text(W/2, 218, '↑↓ CHANGE  ←→ CURSOR  ENTER CONFIRM', {fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:1}).setOrigin(0.5);
 
+    
     this._letterObjs = [];
     this._cursorGfx = this.add.graphics().setDepth(5);
     for(let i=0;i<3;i++){
@@ -206,10 +579,12 @@ class GameOverScene extends Phaser.Scene {
     }
     this.redrawCursor();
 
+    
     this._lbGroup = [];
     this.drawLeaderboardPreview();
 
-    this._submitHint = this.add.text(W/2, 320, '>  PRESS ENTER TO SUBMIT  <', {
+    
+    this._submitHint = this.add.text(W/2, 320, '▶  PRESS ENTER TO SUBMIT  ◀', {
       fontSize:'12px', fontFamily:'Courier New', color:'#44ff88', letterSpacing:2
     }).setOrigin(0.5);
     this.tweens.add({targets:this._submitHint, alpha:{from:0.3,to:1}, duration:600, yoyo:true, repeat:-1});
@@ -221,7 +596,7 @@ class GameOverScene extends Phaser.Scene {
     const x = W/2 + (this.cursor-1)*52;
     g.lineStyle(3, 0x00ffff, 0.8);
     g.strokeRect(x-22, 238, 44, 50);
-
+    
     g.lineStyle(2, 0x00ffff, 0.5);
     [[x-22,238],[x+22,238],[x-22,288],[x+22,288]].forEach(([cx,cy],i)=>{
       const sx=i%2===0?1:-1, sy=i<2?1:-1;
@@ -235,7 +610,7 @@ class GameOverScene extends Phaser.Scene {
     this._lbGroup=[];
     const scores = this.scores.slice(0,8);
 
-    const hdr = this.add.text(W/2, 340, '-  HALL OF FAME  -', {fontSize:'11px', fontFamily:'Courier New', color:'#335566', letterSpacing:4}).setOrigin(0.5);
+    const hdr = this.add.text(W/2, 340, '—  HALL OF FAME  —', {fontSize:'11px', fontFamily:'Courier New', color:'#335566', letterSpacing:4}).setOrigin(0.5);
     this._lbGroup.push(hdr);
 
     scores.forEach((s,i)=>{
@@ -279,7 +654,8 @@ class GameOverScene extends Phaser.Scene {
     this.saveScore(name, this.finalScore, this.sector);
     this.scores = this.loadScores();
 
-    this._submitHint.setText('*  SUBMITTED  *').setColor('#ffff00');
+    
+    this._submitHint.setText('✦  SUBMITTED  ✦').setColor('#ffff00');
     this._cursorGfx.clear();
     this._letterObjs.forEach((l,i)=>{ l.setColor('#ffff00'); });
 
@@ -287,7 +663,7 @@ class GameOverScene extends Phaser.Scene {
   }
 
   showFullBoard(){
-
+    
     this.children.list.slice(0).forEach(o=>{
       if(o.type==='Graphics'||o.type==='Text') try{ o.destroy(); }catch(e){}
     });
@@ -295,7 +671,7 @@ class GameOverScene extends Phaser.Scene {
     this.drawBg();
     const scores = this.scores;
 
-    this.add.text(W/2, 32, '*  HALL OF FAME  *', {
+    this.add.text(W/2, 32, '✦  HALL OF FAME  ✦', {
       fontSize:'26px', fontFamily:'Courier New', color:'#ffdd00',
       stroke:'#443300', strokeThickness:3
     }).setOrigin(0.5);
@@ -303,19 +679,21 @@ class GameOverScene extends Phaser.Scene {
     const lineG = this.add.graphics();
     lineG.lineStyle(1,0x334455,0.8); lineG.lineBetween(W/2-160,58,W/2+160,58);
 
+    
     this.add.text(W/2-130, 70, '#', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0.5);
     this.add.text(W/2-85, 70, 'NAME', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
     this.add.text(W/2+20, 70, 'PUNTOS', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
     this.add.text(W/2+105, 70, 'SECT', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
     lineG.lineBetween(W/2-160,80,W/2+160,80);
 
-    const medals = ['1.','2.','3.'];
+    const medals = ['🥇','🥈','🥉'];
     scores.slice(0,10).forEach((s,i)=>{
       const y = 96 + i*34;
       const isTop = i<3;
       const rankCol = i===0?0xffdd00:i===1?0xcccccc:i===2?0xcc8844:0x334455;
       const rankHex = '#'+rankCol.toString(16).padStart(6,'0');
 
+      
       if(isTop){
         const rowG = this.add.graphics();
         rowG.fillStyle(rankCol, 0.06);
@@ -334,13 +712,14 @@ class GameOverScene extends Phaser.Scene {
     const retry = this.add.text(W/2-80, H-60, '[ RETRY ]', {fontSize:'16px', fontFamily:'Courier New', color:'#44ff88', stroke:'#002200', strokeThickness:2}).setOrigin(0.5).setInteractive();
     retry.on('pointerover',()=>retry.setColor('#ffffff'));
     retry.on('pointerout',()=>retry.setColor('#44ff88'));
-    retry.on('pointerdown',()=>this.scene.start('Game'));
+    retry.on('pointerdown',()=>this.scene.start('g'));
 
     const menu = this.add.text(W/2+80, H-60, '[ MENU ]', {fontSize:'16px', fontFamily:'Courier New', color:'#aaaaaa'}).setOrigin(0.5).setInteractive();
     menu.on('pointerover',()=>menu.setColor('#ffffff'));
     menu.on('pointerout',()=>menu.setColor('#aaaaaa'));
     menu.on('pointerdown',()=>this.scene.start('Menu'));
 
+    
     this.tweens.add({targets:[retry,menu], alpha:{from:0.7,to:1}, duration:800, yoyo:true, repeat:-1});
   }
 
@@ -363,7 +742,7 @@ class GameOverScene extends Phaser.Scene {
 }
 
 class GameScene extends Phaser.Scene {
-  constructor(){ super('Game'); }
+  constructor(){ super('g'); }
 
   init(){
     this.sector = 1;
@@ -379,6 +758,7 @@ class GameScene extends Phaser.Scene {
     this.createUI();
     this.createInput();
     this.sectorTransition = false;
+    F.startMusic();
   }
 
   generateSector(){
@@ -418,6 +798,7 @@ class GameScene extends Phaser.Scene {
 
     this.sectorLabel = this.add.text(W/2, 18, `SECTOR ${s}`, {fontSize:'14px',fontFamily:'Courier New',color:'#335577'}).setOrigin(0.5).setDepth(10);
 
+    
     if(this._hintBg) this._hintBg.forEach(o=>{ try{o.destroy();}catch(e){} });
     this._hintBg = [];
     if(s===1){
@@ -426,6 +807,7 @@ class GameScene extends Phaser.Scene {
       const panelW = 138;
       const panelH = 266;
 
+      
       const panelGfx = this.add.graphics().setDepth(8);
       panelGfx.fillStyle(0x001122, 0.82);
       panelGfx.fillRoundedRect(panelX, panelY, panelW, panelH, 6);
@@ -433,22 +815,24 @@ class GameScene extends Phaser.Scene {
       panelGfx.strokeRoundedRect(panelX, panelY, panelW, panelH, 6);
       this._hintBg.push(panelGfx);
 
+      
       const header = this.add.text(panelX + panelW/2, panelY + 14, '[ TUTORIAL ]', {
         fontSize:'9px', fontFamily:'Courier New', color:'#44ccff', letterSpacing:3
       }).setOrigin(0.5).setDepth(9);
       this._hintBg.push(header);
 
+      
       const divG = this.add.graphics().setDepth(9);
       divG.lineStyle(1, 0x003366, 0.8);
       divG.lineBetween(panelX+8, panelY+24, panelX+panelW-8, panelY+24);
       this._hintBg.push(divG);
 
       const steps = [
-        { text:'Move the ship\nwith WASD' },
-        { text:'Land on\nthe planet' },
-        { text:'Activate the\nantenna (2s)' },
-        { text:'Enter the\nBlack Hole' },
-        { text:'With weapon:\npress K to shoot' },
+        { icon:'🚀', text:'Move the ship\nwith WASD' },
+        { icon:'🪐', text:'Land on\nthe planet' },
+        { icon:'📡', text:'Activate the\nantenna (2s)' },
+        { icon:'🌀', text:'Enter the\nBlack Hole' },
+        { icon:'⚡', text:'With weapon:\npress K to shoot' },
       ];
 
       steps.forEach((step, i) => {
@@ -460,7 +844,7 @@ class GameScene extends Phaser.Scene {
           fontSize:'10px', fontFamily:'Courier New', color:'#88bbdd',
           lineSpacing: 3, wordWrap:{width: panelW - 46}
         }).setOrigin(0, 0.5).setDepth(9);
-
+        
         const numG = this.add.graphics().setDepth(9);
         numG.fillStyle(0x0055aa, 0.7);
         numG.fillCircle(panelX + 14, sy + 4, 9);
@@ -472,6 +856,7 @@ class GameScene extends Phaser.Scene {
         this._hintBg.push(iconObj, textObj, numG, numTxt);
       });
 
+      
       this.time.delayedCall(16000, ()=>{
         if(this._hintBg && this.sector===1){
           this._hintBg.forEach(o=>{ this.tweens.add({targets:o, alpha:0, duration:3000}); });
@@ -501,7 +886,7 @@ class GameScene extends Phaser.Scene {
     for(let i=0;i<numPlanets;i++){
       let x,y,tries=0;
       if(s===1 && i===0){
-
+        
         x = Phaser.Math.Between(Math.floor(W*0.25), Math.floor(W*0.5));
         y = Phaser.Math.Between(Math.floor(H*0.35), Math.floor(H*0.65));
       } else {
@@ -515,23 +900,26 @@ class GameScene extends Phaser.Scene {
       this.createPlanet(x,y,i);
     }
 
+    
     if(s>=4){
       const numTurrets = Math.min(1 + Math.floor((s-3)*0.9), 6);
       for(let ti=0;ti<numTurrets;ti++){
         const planet = this.planets[ti % this.planets.length];
-
+        
+        
         const baseAngle = (ti/Math.max(numTurrets,1))*Math.PI*2 + Math.PI + Math.random()*0.4 - 0.2;
         this.createPlanetTurret(planet, baseAngle);
       }
     }
 
+    
     for(let i=0;i<Math.min(numTowers,numPlanets*2);i++){
       const planet = this.planets[i % this.planets.length];
       const turretAnglesOnPlanet = this.planetTurrets
-        .filter(t=>t.planet===planet)
-        .map(t=>t.angle);
+          .filter(t=>t.planet===planet)
+          .map(t=>t.angle);
       let angle = (i/numTowers)*Math.PI*2 + Math.random()*0.5;
-
+      
       for(let attempt=0; attempt<24; attempt++){
         const candidate = angle + attempt*(Math.PI/12);
         const tooClose = turretAnglesOnPlanet.some(ta=>{
@@ -545,7 +933,7 @@ class GameScene extends Phaser.Scene {
     }
 
     if(s>1){
-
+      
       const blockedPositions = [
         ...this.towers.map(t=>({x:t.x,y:t.y})),
         ...this.planetTurrets.map(t=>({x:t.bx+Math.cos(t.angle)*12, y:t.by+Math.sin(t.angle)*12})),
@@ -562,10 +950,12 @@ class GameScene extends Phaser.Scene {
         return null;
       };
 
+      
+      
       const allUpgrades = ['weapon','extraTank'].filter(t=>(this.upgrades[t]||0)<3);
       const itemPool = [{kind:'fuel'}, {kind:'health'}];
       if(s===3 && (this.upgrades.weapon||0)===0){
-
+        
         itemPool.push({kind:'upgrade', type:'weapon'});
       } else if(allUpgrades.length>0){
         const upg = allUpgrades[Phaser.Math.Between(0,allUpgrades.length-1)];
@@ -573,7 +963,7 @@ class GameScene extends Phaser.Scene {
       } else {
         itemPool.push({kind:'fuel'});
       }
-
+      
       for(let i=itemPool.length-1;i>0;i--){
         const j=Math.floor(Math.random()*(i+1));
         [itemPool[i],itemPool[j]]=[itemPool[j],itemPool[i]];
@@ -662,10 +1052,10 @@ class GameScene extends Phaser.Scene {
   }
 
   createTower(planet, angle){
-
+    
     const baseX = planet.x + Math.cos(angle) * planet.radius;
     const baseY = planet.y + Math.sin(angle) * planet.radius;
-
+    
     const antennaLen = 22;
     const tipX = planet.x + Math.cos(angle) * (planet.radius + antennaLen);
     const tipY = planet.y + Math.sin(angle) * (planet.radius + antennaLen);
@@ -674,17 +1064,18 @@ class GameScene extends Phaser.Scene {
     const beam = this.add.graphics().setDepth(3);
     const timerBar = this.add.graphics().setDepth(5);
 
+    
     const ix = planet.x + Math.cos(angle) * (planet.radius + 14);
     const iy = planet.y + Math.sin(angle) * (planet.radius + 14);
 
     const tower = {
-      x: ix, y: iy,
-      baseX, baseY,
-      tipX, tipY,
-      angle,
+      x: ix, y: iy,          
+      baseX, baseY,           
+      tipX, tipY,             
+      angle,                  
       planet, gfx:g, beam, timer:timerBar,
       active:false, activationProgress:0,
-      tickPhase: Math.random()*Math.PI*2
+      tickPhase: Math.random()*Math.PI*2  
     };
     this.drawTowerGfx(tower);
     this.towers.push(tower);
@@ -696,44 +1087,48 @@ class GameScene extends Phaser.Scene {
     const {baseX,baseY,tipX,tipY,angle,active} = t;
     const dx = tipX-baseX, dy = tipY-baseY;
     const len = Math.sqrt(dx*dx+dy*dy);
-    const nx = dx/len, ny = dy/len;
-    const rx = -ny, ry = nx;
+    const nx = dx/len, ny = dy/len;   
+    const rx = -ny, ry = nx;          
 
+    
     const bw = 7;
     g.fillStyle(0x445566, 1);
     g.fillTriangle(
-      baseX + rx*bw,  baseY + ry*bw,
-      baseX - rx*bw,  baseY - ry*bw,
-      baseX + nx*5,   baseY + ny*5
+        baseX + rx*bw,  baseY + ry*bw,
+        baseX - rx*bw,  baseY - ry*bw,
+        baseX + nx*5,   baseY + ny*5
     );
     g.lineStyle(1, 0x667788, 0.8);
     g.strokeTriangle(
-      baseX + rx*bw,  baseY + ry*bw,
-      baseX - rx*bw,  baseY - ry*bw,
-      baseX + nx*5,   baseY + ny*5
+        baseX + rx*bw,  baseY + ry*bw,
+        baseX - rx*bw,  baseY - ry*bw,
+        baseX + nx*5,   baseY + ny*5
     );
 
+    
     const midX = baseX + nx*12, midY = baseY + ny*12;
     g.lineStyle(2, active ? 0x00cc88 : 0x556677, 1);
     g.lineBetween(baseX+nx*4, baseY+ny*4, tipX, tipY);
 
+    
     const cbLen = 5;
     g.lineStyle(1, active ? 0x00aa66 : 0x445566, 0.9);
     g.lineBetween(midX+rx*cbLen, midY+ry*cbLen, midX-rx*cbLen, midY-ry*cbLen);
 
+    
     const cb2X = baseX+nx*18, cb2Y = baseY+ny*18;
     const cb2Len = 3;
     g.lineStyle(1, active ? 0x00aa66 : 0x445566, 0.7);
     g.lineBetween(cb2X+rx*cb2Len, cb2Y+ry*cb2Len, cb2X-rx*cb2Len, cb2Y-ry*cb2Len);
 
     if(!active){
-
+      
       g.fillStyle(0xffff00, 0.25);
       g.fillCircle(tipX, tipY, 3);
       g.lineStyle(1, 0x888800, 0.4);
       g.strokeCircle(tipX, tipY, 3);
     } else {
-
+      
       g.fillStyle(0x00ffcc, 0.3);
       g.fillCircle(tipX, tipY, 8);
       g.fillStyle(0x00ffff, 0.9);
@@ -777,7 +1172,7 @@ class GameScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(4);
     const amount = 25 + level*15 + Phaser.Math.Between(0, 15);
     this.drawFuelDepotGfx(g, x, y, level);
-    const label = this.add.text(x, y + 22 + level*2, `[F] +${amount}`, {fontSize:'8px', fontFamily:'Courier New', color:'#ffaa00'}).setOrigin(0.5).setDepth(5);
+    const label = this.add.text(x, y + 22 + level*2, `⛽ +${amount}`, {fontSize:'8px', fontFamily:'Courier New', color:'#ffaa00'}).setOrigin(0.5).setDepth(5);
     this.fuelDepots = this.fuelDepots || [];
     this.fuelDepots.push({x, y, gfx:g, label, amount, collected:false, level});
   }
@@ -813,19 +1208,19 @@ class GameScene extends Phaser.Scene {
         g.lineStyle(1,col,0.9); g.strokeRect(x+ox-3,y-sz+2,6,sz*2-4);
       }
     } else {
-
+      
       g.fillStyle(col, 1);
-
+      
       g.fillRect(x-2, y-sz+2, 4, sz*2-6);
-
+      
       g.fillCircle(x, y-sz+4, 5+nextLvl);
       g.fillStyle(0x000000, 0.5);
       g.fillCircle(x, y-sz+4, 2+nextLvl*0.5);
-
+      
       g.fillStyle(col, 1);
       g.fillRect(x-4, y+sz-8, 4, 6);
       g.fillRect(x, y+sz-8, 4, 6);
-
+      
       g.lineStyle(1, col2, 0.8);
       g.strokeCircle(x, y-sz+4, 5+nextLvl);
       g.strokeRect(x-2, y-sz+2, 4, sz*2-6);
@@ -840,6 +1235,11 @@ class GameScene extends Phaser.Scene {
 
   createEnemy(x,y){
 
+    
+    
+    
+    
+    
     const maxType = this.sector>=7 ? 3 : this.sector>=5 ? 2 : this.sector>=3 ? 1 : 0;
     const type = Phaser.Math.Between(0, maxType);
     const g = this.add.graphics().setDepth(6);
@@ -872,16 +1272,18 @@ class GameScene extends Phaser.Scene {
     const rx = -ny, ry = nx;
     const hpRatio = t.hp/t.maxHp;
 
+    
     const baseCol  = hpRatio>0.6 ? 0xdd3300 : hpRatio>0.3 ? 0xff7700 : 0xff2200;
     const glowCol  = hpRatio>0.6 ? 0xff4400 : hpRatio>0.3 ? 0xffaa00 : 0xff6600;
     const darkCol  = 0x1a0800;
 
+    
     const hw = 10, hd = 6;
     const pts = [];
     for(let i=0;i<6;i++){
       const a = (i/6)*Math.PI*2 + angle;
       const sx2 = hw * Math.cos(a), sy2 = hd * Math.sin(a);
-
+      
       pts.push({ x: bx + rx*sx2 + nx*sy2*0.4, y: by + ry*sx2 + ny*sy2*0.4 });
     }
     g.fillStyle(0x2a1500,1);
@@ -893,6 +1295,7 @@ class GameScene extends Phaser.Scene {
     for(let i=1;i<pts.length;i++) g.lineTo(pts[i].x,pts[i].y);
     g.closePath(); g.strokePath();
 
+    
     const strutBase = { x: bx + nx*2,  y: by + ny*2  };
     const strutTop  = { x: bx + nx*10, y: by + ny*10 };
     g.lineStyle(4, darkCol, 1);
@@ -900,30 +1303,33 @@ class GameScene extends Phaser.Scene {
     g.lineStyle(2, baseCol, 0.5);
     g.lineBetween(strutBase.x, strutBase.y, strutTop.x, strutTop.y);
 
+    
     const tx = bx + nx*12, ty = by + ny*12;
     g.fillStyle(darkCol,1);       g.fillCircle(tx,ty,9);
     g.fillStyle(baseCol,0.9);     g.fillCircle(tx,ty,7);
     g.lineStyle(2, glowCol, 0.8); g.strokeCircle(tx,ty,7);
-
+    
     g.lineStyle(1, 0xffffff, 0.15); g.strokeCircle(tx,ty,4);
 
+    
     const barLen = 14;
     const offsets = [-2.5, 2.5];
     offsets.forEach(off => {
       const bsx = tx + rx*off, bsy = ty + ry*off;
       const bex = bsx + Math.cos(aimAngle)*barLen, bey = bsy + Math.sin(aimAngle)*barLen;
-
+      
       g.lineStyle(4, darkCol, 1);   g.lineBetween(bsx,bsy,bex,bey);
       g.lineStyle(2, baseCol, 1);   g.lineBetween(bsx,bsy,bex,bey);
-
+      
       g.fillStyle(glowCol,1);
       g.fillCircle(bex, bey, 2.5);
     });
-
+    
     const bridgeX = tx + Math.cos(aimAngle)*6, bridgeY = ty + Math.sin(aimAngle)*6;
     g.lineStyle(3, baseCol, 0.7);
     g.lineBetween(bridgeX + rx*2.5, bridgeY + ry*2.5, bridgeX - rx*2.5, bridgeY - ry*2.5);
 
+    
     const pulse = 0.5 + 0.5*Math.sin(Date.now()/200 + t.angle*10);
     const lightCol = hpRatio>0.6 ? 0x00ff88 : hpRatio>0.3 ? 0xffcc00 : 0xff2200;
     g.fillStyle(lightCol, 0.4 + 0.6*pulse);
@@ -931,15 +1337,16 @@ class GameScene extends Phaser.Scene {
     g.lineStyle(1, lightCol, pulse);
     g.strokeCircle(tx + rx*5, ty + ry*5, 3.5);
 
+    
     const bw=28, bh=4;
     const barX = tx - bw/2, barY = ty - 20;
-
+    
     g.fillStyle(0x1a0000,1);     g.fillRect(barX, barY, bw, bh);
     g.fillStyle(baseCol, 1);     g.fillRect(barX, barY, bw*hpRatio, bh);
-
+    
     g.fillStyle(0xffffff, 0.15); g.fillRect(barX, barY, bw*hpRatio, 2);
     g.lineStyle(1, glowCol, 0.6);g.strokeRect(barX, barY, bw, bh);
-
+    
     for(let p=1;p<t.maxHp;p++){
       const pipX = barX + (bw/t.maxHp)*p;
       g.lineStyle(1, darkCol, 0.8); g.lineBetween(pipX, barY, pipX, barY+bh);
@@ -952,18 +1359,18 @@ class GameScene extends Phaser.Scene {
       const tx = t.bx + Math.cos(t.angle)*8;
       const ty = t.by + Math.sin(t.angle)*8;
       const toShip = angleTo(tx,ty,this.ship.x,this.ship.y);
-
+      
       let da = toShip - t.aimAngle;
       while(da> Math.PI) da-=Math.PI*2;
       while(da<-Math.PI) da+=Math.PI*2;
       t.aimAngle += da * Math.min(1, dt*2.5);
       this.drawPlanetTurretGfx(t, t.aimAngle);
-
+      
       const ds = dist(tx,ty,this.ship.x,this.ship.y);
       const fireRate = 2.5 - Math.min(1.5, this.sector*0.15);
       t.fireTimer -= dt;
       if(t.fireTimer<=0 && ds<280 && !this.ship.landed &&
-         hasLineOfSight(tx,ty,this.ship.x,this.ship.y,this.planets)){
+          hasLineOfSight(tx,ty,this.ship.x,this.ship.y,this.planets)){
         t.fireTimer = fireRate;
         const spd = 200;
         const g2 = this.add.graphics().setDepth(8);
@@ -992,7 +1399,7 @@ class GameScene extends Phaser.Scene {
     g.rotateCanvas(angle);
 
     if(type===0){
-
+      
       const bc = alerted ? 0xff1100 : 0xff3333;
       g.fillStyle(bc,1);
       g.fillTriangle(14,0,-8,-7,-8,7);
@@ -1001,7 +1408,7 @@ class GameScene extends Phaser.Scene {
       g.fillStyle(alerted?0xff8800:0xff6600,0.8);
       g.fillCircle(0,0,4);
     } else if(type===1){
-
+      
       const bc = alerted ? 0xff6600 : 0xff8800;
       g.fillStyle(bc,1);
       g.fillTriangle(13,-4,-7,-9,-7,0);
@@ -1011,7 +1418,7 @@ class GameScene extends Phaser.Scene {
       g.strokeTriangle(13, 4,-7, 0,-7,9);
       g.fillStyle(0xffff88,0.7); g.fillRect(10,-5,5,2); g.fillRect(10,3,5,2);
     } else if(type===2){
-
+      
       const bc = alerted ? 0x00ffcc : 0x00aaaa;
       g.fillStyle(bc,0.9); g.fillCircle(0,0,9);
       g.lineStyle(2,0x00ffff,0.8); g.strokeCircle(0,0,9);
@@ -1020,7 +1427,7 @@ class GameScene extends Phaser.Scene {
       g.lineBetween(-12,0,-9,0); g.lineBetween(9,0,12,0);
       g.lineBetween(0,-12,0,-9); g.lineBetween(0,9,0,12);
     } else {
-
+      
       const bc = alerted ? 0xcc00ff : 0x9900cc;
       g.fillStyle(bc,1);
       g.fillTriangle(0,-13, 13,0, 0,13);
@@ -1033,6 +1440,7 @@ class GameScene extends Phaser.Scene {
     }
     g.restore();
 
+    
     const hpRatio = Math.max(0, hp/maxHp);
     const bw=24, bh=3;
     const barX = x - bw/2, barY = y - 26;
@@ -1118,6 +1526,7 @@ class GameScene extends Phaser.Scene {
     sg.fillTriangle(-2,-6,-10,-12,-10,0);
     sg.fillTriangle(-2,6,-10,12,-10,0);
 
+
     const wlv = this.upgrades.weapon||0;
     if(wlv>=1){
 
@@ -1151,7 +1560,7 @@ class GameScene extends Phaser.Scene {
   }
 
   createInput(){
-
+    
     this.keys = this.input.keyboard.addKeys({
       up:    Phaser.Input.Keyboard.KeyCodes.UP,
       down:  Phaser.Input.Keyboard.KeyCodes.DOWN,
@@ -1165,6 +1574,7 @@ class GameScene extends Phaser.Scene {
       fire:  Phaser.Input.Keyboard.KeyCodes.K,
     });
 
+    
     this._arcade = { up:false, down:false, left:false, right:false, fire:false, brake:false };
     const arcadeMap = {
       'P1U':'up', 'P1D':'down', 'P1L':'left', 'P1R':'right',
@@ -1195,32 +1605,36 @@ class GameScene extends Phaser.Scene {
     this.uiGfx = this.add.graphics().setDepth(20);
     this.uiTexts = [];
 
+    
     this.scoreText  = this.add.text(10, 10, 'SCORE: 0',   {fontSize:'12px',fontFamily:'Courier New',color:'#aaddff'}).setDepth(20);
     this.sectorText = this.add.text(10, 26, 'SECTOR: 1',  {fontSize:'12px',fontFamily:'Courier New',color:'#aaddff'}).setDepth(20);
     this.towersText = this.add.text(10, 42, 'TOWERS: 0/0',{fontSize:'12px',fontFamily:'Courier New',color:'#ffff88'}).setDepth(20);
 
+    
     this.msgText = this.add.text(W/2, H-22, '', {fontSize:'13px',fontFamily:'Courier New',color:'#ffff00',stroke:'#333300',strokeThickness:2}).setOrigin(0.5).setDepth(20);
 
     this.uiTexts = [this.scoreText, this.sectorText, this.towersText, this.msgText];
 
+    
     this.upgradePanel = this.add.graphics().setDepth(20);
     this.upgradeIcons = {};
     const upgDefs = [
-      { key:'weapon',    icon:'🏹', label:'WEAPON',   color:'#ffdd00' },
+      { key:'weapon',    icon:'⚡', label:'WEAPON',   color:'#ffdd00' },
       { key:'extraTank', icon:'⛽', label:'TANK', color:'#ff8800' },
     ];
     this._upgDefs = upgDefs;
 
+    
     this._panelTitle = this.add.text(W-8, H-86, 'MODULES', {
       fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:2
     }).setOrigin(1, 0.5).setDepth(22);
 
     upgDefs.forEach((u, i) => {
-      const ux = W - 90 + i * 46;
+      const ux = W - 90 + i * 46;  
       const uy = H - 60;
       const ico   = this.add.text(ux, uy,    u.icon,  {fontSize:'18px'}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
       const lbl   = this.add.text(ux, uy+16, u.label, {fontSize:'7px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
-      const stars = this.add.text(ux, uy-14, 'ooo',   {fontSize:'8px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
+      const stars = this.add.text(ux, uy-14, '○○○',   {fontSize:'8px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
       this.upgradeIcons[u.key] = {ico, lbl, stars, color:u.color, ux, uy};
     });
   }
@@ -1230,6 +1644,8 @@ class GameScene extends Phaser.Scene {
     const g = this.uiGfx;
     g.clear();
 
+    
+    
     const bx = 10, bw = 100, bh = 7, gap = 14;
     const maxFuel = 100 + (this.upgrades.extraTank||0)*15;
 
@@ -1241,6 +1657,7 @@ class GameScene extends Phaser.Scene {
         bg:0x220000, border:0x550000 },
     ];
 
+    
     g.fillStyle(0x000000, 0.45);
     g.fillRoundedRect(bx-4, H-66, bw+70, 58, 4);
 
@@ -1262,24 +1679,26 @@ class GameScene extends Phaser.Scene {
         this.add.text(bx, H-59+gap, 'ENRG', {fontSize:'7px',fontFamily:'Courier New',color:'#00ddff'}).setDepth(21),
         this.add.text(bx, H-59+gap*2, 'HP', {fontSize:'7px',fontFamily:'Courier New',color:'#00ff44'}).setDepth(21),
       ];
-
+      
       this._barVals = [
         this.add.text(bx+132, H-59,       '', {fontSize:'7px',fontFamily:'Courier New',color:'#ffaa00'}).setDepth(21),
         this.add.text(bx+132, H-59+gap,   '', {fontSize:'7px',fontFamily:'Courier New',color:'#00ddff'}).setDepth(21),
         this.add.text(bx+132, H-59+gap*2, '', {fontSize:'7px',fontFamily:'Courier New',color:'#00ff44'}).setDepth(21),
       ];
     }
-
+    
     if(this._barVals){
       this._barVals[0].setText(Math.ceil(s.fuel)+'/'+maxFuel);
       this._barVals[1].setText(Math.ceil(s.energy)+'/100');
       this._barVals[2].setText(Math.ceil(s.health)+'/100');
     }
 
+    
     const pg = this.upgradePanel;
     pg.clear();
     const hasAny = (this.upgrades.weapon||0)+(this.upgrades.extraTank||0) > 0;
 
+    
     pg.fillStyle(0x000000, 0.45);
     pg.fillRoundedRect(W-110, H-80, 104, 72, 4);
     pg.lineStyle(1, 0x223344, 0.8);
@@ -1292,7 +1711,8 @@ class GameScene extends Phaser.Scene {
       ic.ico.setAlpha(alpha);
       ic.lbl.setAlpha(alpha);
 
-      const starStr = '*'.repeat(lvl) + 'o'.repeat(3-lvl);
+      
+      const starStr = '●'.repeat(lvl) + '○'.repeat(3-lvl);
       ic.stars.setText(starStr).setAlpha(alpha);
 
       const hx = parseInt(u.color.replace('#','0x'));
@@ -1306,13 +1726,13 @@ class GameScene extends Phaser.Scene {
   startTutorial(){
     if(this.sector!==1) return;
     const msgs = [
-      { t:1000,  txt:' USE WASD / ARROWS to thrust and rotate the ship',  dur:3500 },
-      { t:5000,  txt:' Land near antennas to activate them (2s)', dur:3800 },
-      { t:9500,  txt:' Activate ALL antennas in the sector',                dur:3200 },
-      { t:13500, txt:' A BLACK HOLE appears - enter it to advance!', dur:3800 },
-      { t:18000, txt:' Collect floating debris to upgrade your ship',        dur:3200 },
-      { t:22000, txt:' Land on planets to recharge fuel and energy', dur:3500 },
-      { t:26000, txt:' Got a weapon? Press K to shoot and defend yourself from turrets and enemies', dur:4200 },
+      { t:1000,  txt:'⬆ USE WASD / ARROWS to thrust and rotate the ship',  dur:3500 },
+      { t:5000,  txt:'📡 Land near antennas to activate them (2s)', dur:3800 },
+      { t:9500,  txt:'⚡ Activate ALL antennas in the sector',                dur:3200 },
+      { t:13500, txt:'🌀 A BLACK HOLE appears — enter it to advance!', dur:3800 },
+      { t:18000, txt:'🔧 Collect floating debris to upgrade your ship',        dur:3200 },
+      { t:22000, txt:'⛽ Land on planets to recharge fuel and energy', dur:3500 },
+      { t:26000, txt:'⚡ Got a weapon? Press K to shoot and defend yourself from turrets and enemies', dur:4200 },
     ];
     msgs.forEach(m=>{
       this.time.delayedCall(m.t, ()=>{
@@ -1329,11 +1749,11 @@ class GameScene extends Phaser.Scene {
 
   showUpgradePopup(type, level=1){
     const names = {weapon:'ARMAMENT', extraTank:'EXTRA TANK', health:'HEALTH'};
-    const stars = '*'.repeat(level)+'o'.repeat(3-level);
-    this.showMsg(`* ${names[type]||type}  ${stars}  ACQUIRED`, 2500);
+    const stars = '★'.repeat(level)+'☆'.repeat(3-level);
+    this.showMsg(`✦ ${names[type]||type}  ${stars}  ACQUIRED`, 2500);
     if(type==='weapon'){
       this.time.delayedCall(2600, ()=>{
-        this.showMsg('[W] Press K to shoot!', 3000);
+        this.showMsg('⚡ Press K to shoot!', 3000);
       });
     }
     this.score += 50;
@@ -1359,15 +1779,19 @@ class GameScene extends Phaser.Scene {
     const s = this.ship;
     const k = this.keys;
     if(s.health<=0){
+      if(this._engineOn){ this._engineOn=false; F.stopEngine(); }
+      F.stopMusic(0.5);
+      F.shipDestroy();
       this.scene.start('GameOver',{score:this.score,sector:this.sector,reason:'hull'});
       return;
     }
     if(s.fuel<=0){
+      if(this._engineOn){ this._engineOn=false; F.stopEngine(); }
       if(!this._fuelEmptyTimer) this._fuelEmptyTimer=0;
       this._fuelEmptyTimer+=dt;
-      this.msgText.setText('! OUT OF FUEL - ADRIFT (' + Math.ceil(3-this._fuelEmptyTimer) + 's)');
+      this.msgText.setText('⚠ OUT OF FUEL — ADRIFT (' + Math.ceil(3-this._fuelEmptyTimer) + 's)');
       this.msgText.setColor('#ff4400');
-      if(this._fuelEmptyTimer>=3){ this.scene.start('GameOver',{score:this.score,sector:this.sector,reason:'fuel'}); return; }
+      if(this._fuelEmptyTimer>=3){ F.stopMusic(0.5); F.shipDestroy(); this.scene.start('GameOver',{score:this.score,sector:this.sector,reason:'fuel'}); return; }
     } else {
       if(this._fuelEmptyTimer){ this._fuelEmptyTimer=0; this.msgText.setColor('#ffff00'); }
     }
@@ -1398,6 +1822,10 @@ class GameScene extends Phaser.Scene {
     const thrusting = thrustPressed && !s.landed;
     s.thrusting = thrusting;
 
+    
+    if(thrusting && s.fuel>0 && !this._engineOn){ this._engineOn=true; F.startEngine(); }
+    if((!thrusting || s.fuel<=0) && this._engineOn){ this._engineOn=false; F.stopEngine(); }
+
     if(!s.landed){
       if(rotLeft) s.angle -= dt*2.5;
       if(rotRight) s.angle += dt*2.5;
@@ -1415,6 +1843,7 @@ class GameScene extends Phaser.Scene {
       s.vx *= (1 - dt*3);
       s.vy *= (1 - dt*3);
       s.fuel = Math.max(0, s.fuel - dt*4);
+      if(!this._brakeSound){ this._brakeSound=true; F.brake(); }
     } else { this._brakeSound=false; }
 
     if(!s.landed){
@@ -1457,7 +1886,7 @@ class GameScene extends Phaser.Scene {
         } else {
 
           onPlanet = true;
-          if(!s.landed)
+          if(!s.landed) F.land();
           s.landed = true;
           s.landedPlanet = p;
           s.vx = 0; s.vy = 0;
@@ -1485,6 +1914,7 @@ class GameScene extends Phaser.Scene {
                 fd.collected = true;
                 fd.gfx.clear();
                 fd.label.setText('');
+                F.collectItem();
                 this.showMsg(`+${fd.amount} FUEL`, 1500);
                 this.score += 10;
               }
@@ -1493,10 +1923,11 @@ class GameScene extends Phaser.Scene {
 
           for(const w of this.wrecks){
             if(!w.collected && dist(s.x,s.y,w.x,w.y)<30){
+              F.collectItem();
               if(w.type==='health'){
-
+                
                 this.ship.health = Math.min(100, this.ship.health + 30);
-                this.showMsg('+30 HEALTH RESTORED', 2000);
+                this.showMsg('🔧 +30 HEALTH RESTORED', 2000);
                 this.score += 30;
               } else {
                 this.upgrades[w.type] = Math.min(3, (this.upgrades[w.type]||0)+1);
@@ -1539,7 +1970,7 @@ class GameScene extends Phaser.Scene {
       } else {
 
         if(!this._noEnergyFlash || this._noEnergyFlash<=0){
-          this.showMsg(' NOT ENOUGH ENERGY TO SHOOT', 1200);
+          this.showMsg('⚡ NOT ENOUGH ENERGY TO SHOOT', 1200);
           this._noEnergyFlash = 1.5;
         }
       }
@@ -1550,6 +1981,7 @@ class GameScene extends Phaser.Scene {
   fireBullet(spread=0){
     const s = this.ship;
     const wlvl = this.upgrades.weapon;
+    if(spread===0) F.shoot();
     const speed = 320 + wlvl*30;
     const a = s.angle + spread;
     const g = this.add.graphics().setDepth(8);
@@ -1591,6 +2023,7 @@ class GameScene extends Phaser.Scene {
           e.lastKnownY = this.ship.y;
           b.gfx.destroy(); this.bullets.splice(i,1);
           if(e.hp<=0){
+            F.enemyDie();
             e.gfx.destroy(); this.enemies.splice(j,1);
             this.score += 100;
             this.showMsg('+100 ENEMY DESTROYED!');
@@ -1598,7 +2031,7 @@ class GameScene extends Phaser.Scene {
           break;
         }
       }
-
+      
       if(!this.bullets[i]) continue;
       for(let j=this.planetTurrets.length-1;j>=0;j--){
         const t = this.planetTurrets[j];
@@ -1634,6 +2067,7 @@ class GameScene extends Phaser.Scene {
       if(eHitPlanet) continue;
       if(dist(b.x,b.y,this.ship.x,this.ship.y)<12){
         let dmg = 10;
+        F.damage();
         this.ship.health = Math.max(0, this.ship.health-dmg);
         b.gfx.destroy(); this.enemyBullets.splice(i,1);
       }
@@ -1674,7 +2108,7 @@ class GameScene extends Phaser.Scene {
 
   spawnAsteroid(){
     const s = this.sector;
-
+    
     let ax, ay;
     const edge = Math.floor(Math.random()*4);
     if(edge===0){ ax=Phaser.Math.Between(0,W); ay=-20; }
@@ -1686,7 +2120,7 @@ class GameScene extends Phaser.Scene {
     const maxR = s>=7 ? 22 : s>=4 ? 16 : 10;
     const radius = Phaser.Math.Between(minR, maxR);
     const speed  = Phaser.Math.FloatBetween(14, 32+s*2.76);
-
+    
     const baseAngle = angleTo(ax, ay, W/2+Phaser.Math.Between(-150,150), H/2+Phaser.Math.Between(-150,150));
     const spin = Phaser.Math.FloatBetween(-1.5,1.5);
     const g = this.add.graphics().setDepth(3);
@@ -1699,10 +2133,11 @@ class GameScene extends Phaser.Scene {
     const s = this.sector;
     const targetCount = 3 + Math.floor(s*1.1);
 
+    
     this._astRespawnTimer = (this._astRespawnTimer||0) - dt;
     if(this._astRespawnTimer<=0 && this.asteroids.length < targetCount){
       this.spawnAsteroid();
-      this._astRespawnTimer = 2.5;
+      this._astRespawnTimer = 2.5; 
     }
 
     for(let i=this.asteroids.length-1;i>=0;i--){
@@ -1711,14 +2146,14 @@ class GameScene extends Phaser.Scene {
 
       for(const p of this.planets){
         const dp = dist(a.x,a.y,p.x,p.y);
-
+        
         if(dp < p.gravRadius){
           const ag = angleTo(a.x,a.y,p.x,p.y);
           const force = p.gravity*(1-dp/p.gravRadius);
           a.vx += Math.cos(ag)*force*0.3*dt;
           a.vy += Math.sin(ag)*force*0.3*dt;
         }
-
+        
         if(dp < p.radius + a.radius){
           a.gfx.destroy();
           this.asteroids.splice(i,1);
@@ -1960,25 +2395,25 @@ class GameScene extends Phaser.Scene {
     for(const t of this.towers){
       const now = this.time.now;
       if(t.active){
-
+        
         t.beam.clear();
         const pulse = 0.4+0.4*Math.sin(now/180);
         const bLen = 30 + 10*Math.sin(now/220);
         t.beam.lineStyle(2, 0x00ffff, pulse);
         t.beam.lineBetween(
-          t.tipX, t.tipY,
-          t.tipX + Math.cos(t.angle)*bLen,
-          t.tipY + Math.sin(t.angle)*bLen
+            t.tipX, t.tipY,
+            t.tipX + Math.cos(t.angle)*bLen,
+            t.tipY + Math.sin(t.angle)*bLen
         );
         t.beam.lineStyle(1, 0x00ffcc, pulse*0.4);
         t.beam.strokeCircle(t.tipX, t.tipY, 6+4*pulse);
         this.drawTowerGfx(t);
       } else {
-
+        
         t.beam.clear();
-        const tickRate = 1200;
+        const tickRate = 1200; 
         const phase = (now + t.tickPhase*1000) % tickRate;
-        const on = phase < tickRate*0.18;
+        const on = phase < tickRate*0.18; 
         if(on){
           t.beam.fillStyle(0xffff00, 0.9);
           t.beam.fillCircle(t.tipX, t.tipY, 4);
@@ -1996,7 +2431,9 @@ class GameScene extends Phaser.Scene {
     this.activeTowers++;
     this.score += 150;
     if(this.activeTowers >= this.towers.length){
+      F.allTowersActivated();
     } else {
+      F.towerActivate();
     }
     this.showMsg(`ANTENNA ACTIVATED! ${this.activeTowers}/${this.towers.length}`, 2000);
     if(this.activeTowers >= this.towers.length){
@@ -2014,11 +2451,12 @@ class GameScene extends Phaser.Scene {
       py = Phaser.Math.Between(60, H-60);
       tries++;
     } while(
-      tries < 200 &&
-      this.planets.some(p => dist(px, py, p.x, p.y) < p.radius + 50)
-    );
+        tries < 200 &&
+        this.planets.some(p => dist(px, py, p.x, p.y) < p.radius + 50)
+        );
     this.portalX = px;
     this.portalY = py;
+    F.portalSpawn();
     this.showMsg('BLACK HOLE SPAWNED! Enter it.', 3000);
     this.score += 200;
   }
@@ -2041,7 +2479,7 @@ class GameScene extends Phaser.Scene {
       const r1=8,r2=34;
       pg.lineStyle(1,0xaa44ff,0.6);
       pg.lineBetween(px+Math.cos(angle)*r1,py+Math.sin(angle)*r1,
-                     px+Math.cos(angle+0.5)*r2,py+Math.sin(angle+0.5)*r2);
+          px+Math.cos(angle+0.5)*r2,py+Math.sin(angle+0.5)*r2);
     }
     pg.fillStyle(0x000000,1);
     pg.fillCircle(px,py,10);
@@ -2056,6 +2494,9 @@ class GameScene extends Phaser.Scene {
     this.sectorTransition = true;
     this.score += 500 + this.sector*100;
     this.sector++;
+    F.portalEnter();
+    F.stopMusic(1.2);
+    if(this._engineOn){ this._engineOn=false; F.stopEngine(); }
 
     const flash = this.add.graphics().setDepth(50);
     flash.fillStyle(0xffffff,1); flash.fillRect(0,0,W,H);
@@ -2080,79 +2521,85 @@ class GameScene extends Phaser.Scene {
         this.activeTowers = 0;
         this.landingTimer = 0;
         this.landingTower = null;
+        F.sectorStart();
+        F.startMusic();
         this.showMsg(`SECTOR ${this.sector} STARTED!`, 2500);
 
+        
         this.spawnShipBeacon(sp.x, sp.y);
       }
     });
   }
 
   spawnShipBeacon(sx, sy){
-
+    
     const rings = this.add.graphics().setDepth(30);
     let ringAge = 0;
     const ringEvent = this.time.addEvent({ delay: 16, loop: true, callback: ()=>{
-      ringAge += 0.016;
-      rings.clear();
-      for(let i=0;i<3;i++){
-        const t = (ringAge*0.9 - i*0.25);
-        if(t<0) continue;
-        const r = t * 120;
-        const alpha = Math.max(0, 0.7 - t*0.9);
-        rings.lineStyle(2, 0x00ffff, alpha);
-        rings.strokeCircle(sx, sy, r);
-      }
-      if(ringAge > 3.5){ ringEvent.remove(); rings.destroy(); }
-    }});
+        ringAge += 0.016;
+        rings.clear();
+        for(let i=0;i<3;i++){
+          const t = (ringAge*0.9 - i*0.25);
+          if(t<0) continue;
+          const r = t * 120;
+          const alpha = Math.max(0, 0.7 - t*0.9);
+          rings.lineStyle(2, 0x00ffff, alpha);
+          rings.strokeCircle(sx, sy, r);
+        }
+        if(ringAge > 3.5){ ringEvent.remove(); rings.destroy(); }
+      }});
 
+    
     const arrowGfx = this.add.graphics().setDepth(31);
-    const arrowLabel = this.add.text(sx, sy-38, '* SHIP *', {
+    const arrowLabel = this.add.text(sx, sy-38, '◆ SHIP ◆', {
       fontSize:'10px', fontFamily:'Courier New', color:'#00ffff', stroke:'#003333', strokeThickness:2
     }).setOrigin(0.5).setDepth(31);
 
+    
     this.tweens.add({ targets: arrowLabel, alpha:{from:0.2,to:1}, duration:300, yoyo:true, repeat:13,
       onComplete: ()=>{ arrowLabel.destroy(); }
     });
 
     let arrowAge = 0;
     const arrowEvent = this.time.addEvent({ delay: 16, loop: true, callback: ()=>{
-      arrowAge += 0.016;
-      arrowGfx.clear();
-      if(arrowAge > 4){ arrowEvent.remove(); arrowGfx.destroy(); return; }
+        arrowAge += 0.016;
+        arrowGfx.clear();
+        if(arrowAge > 4){ arrowEvent.remove(); arrowGfx.destroy(); return; }
 
-      const corners = [
-        {cx: 30,   cy: H/2,  ang: 0         },
-        {cx: W-30, cy: H/2,  ang: Math.PI   },
-        {cx: W/2,  cy: 30,   ang: Math.PI/2 },
-        {cx: W/2,  cy: H-30, ang: -Math.PI/2},
-      ];
+        
+        const corners = [
+          {cx: 30,   cy: H/2,  ang: 0         },   
+          {cx: W-30, cy: H/2,  ang: Math.PI   },   
+          {cx: W/2,  cy: 30,   ang: Math.PI/2 },   
+          {cx: W/2,  cy: H-30, ang: -Math.PI/2},   
+        ];
 
-      const pulse = 0.5 + 0.5*Math.sin(arrowAge * 8);
-      corners.forEach(c=>{
+        const pulse = 0.5 + 0.5*Math.sin(arrowAge * 8);
+        corners.forEach(c=>{
+          
+          const dx = sx - c.cx, dy = sy - c.cy;
+          const edgeAng = Math.atan2(dy, dx);
+          
+          const diff = Math.abs(edgeAng - c.ang);
+          const normDiff = Math.min(diff, Math.PI*2 - diff);
+          if(normDiff > Math.PI * 0.6) return;
 
-        const dx = sx - c.cx, dy = sy - c.cy;
-        const edgeAng = Math.atan2(dy, dx);
-
-        const diff = Math.abs(edgeAng - c.ang);
-        const normDiff = Math.min(diff, Math.PI*2 - diff);
-        if(normDiff > Math.PI * 0.6) return;
-
-        arrowGfx.save();
-        arrowGfx.translateCanvas(c.cx, c.cy);
-        arrowGfx.rotateCanvas(edgeAng);
-        arrowGfx.fillStyle(0x00ffff, 0.5 + 0.4*pulse);
-
-        for(let k=0;k<3;k++){
-          const ox = k*10;
-          arrowGfx.fillTriangle(12+ox,0, -2+ox,-7, -2+ox,7);
-        }
-        arrowGfx.restore();
-      });
-    }});
+          arrowGfx.save();
+          arrowGfx.translateCanvas(c.cx, c.cy);
+          arrowGfx.rotateCanvas(edgeAng);
+          arrowGfx.fillStyle(0x00ffff, 0.5 + 0.4*pulse);
+          
+          for(let k=0;k<3;k++){
+            const ox = k*10;
+            arrowGfx.fillTriangle(12+ox,0, -2+ox,-7, -2+ox,7);
+          }
+          arrowGfx.restore();
+        });
+      }});
   }
 }
 
-const config = {
+const c = {
   type: Phaser.AUTO,
   width: W,
   height: H,
@@ -2162,4 +2609,4 @@ const config = {
   render: { antialias: true }
 };
 
-const game = new Phaser.Game(config);
+const g = new Phaser.Game(c);
