@@ -1,21 +1,19 @@
+const _C=Math.cos,_S=Math.sin,_SQ=Math.sqrt,_A2=Math.atan2,_MX=Math.max,_MN=Math.min,_MF=Math.floor;
+const _PB=Phaser.Math.Between,_PF=Phaser.Math.FloatBetween;
+const _FF='Courier New';
 const W = 800, H = 600;
-
-// ─── SFX ENGINE (Web Audio API — no external files) ───────────────────────
 const SFX = (() => {
   let ctx = null;
   const init = () => {
     if(!ctx) ctx = new (window.AudioContext||window.webkitAudioContext)();
     if(ctx.state==='suspended') ctx.resume();
   };
-
-  // master volume node
   let master = null;
   const getMaster = () => {
     init();
     if(!master){ master = ctx.createGain(); master.gain.value = 0.55; master.connect(ctx.destination); }
     return master;
   };
-
   const osc = (type, freq, gainVal, duration, freqEnd, detune=0) => {
     const ac = ctx;
     const g = ac.createGain();
@@ -31,7 +29,6 @@ const SFX = (() => {
     o.start();
     o.stop(ac.currentTime + duration);
   };
-
   const noise = (gainVal, duration, filterFreq=2000) => {
     init();
     const bufSize = ctx.sampleRate * duration;
@@ -50,12 +47,9 @@ const SFX = (() => {
     src.connect(filt); filt.connect(g); g.connect(getMaster());
     src.start(); src.stop(ctx.currentTime + duration);
   };
-
   let engineNode = null, engineGain = null;
   let enginePlaying = false;
-
   return {
-    // Continuous engine hum — call startEngine / stopEngine
     startEngine() {
       init();
       if(enginePlaying) return;
@@ -67,7 +61,6 @@ const SFX = (() => {
       engineNode = ctx.createOscillator();
       engineNode.type = 'sawtooth';
       engineNode.frequency.value = 80;
-      // LFO wobble
       const lfo = ctx.createOscillator();
       const lfoGain = ctx.createGain();
       lfo.frequency.value = 14;
@@ -85,129 +78,96 @@ const SFX = (() => {
       setTimeout(()=>{ try{n.stop();g.disconnect();lfo.stop();}catch(e){} }, 180);
       engineNode = null; engineGain = null;
     },
-
     shoot() {
       init();
       osc('square', 680, 0.22, 0.08, 180);
       noise(0.12, 0.06, 3000);
     },
-
     towerActivate() {
       init();
-      // Rising chime chord
       [330, 440, 660, 880].forEach((f,i) => {
         setTimeout(()=>{ osc('sine', f, 0.28, 0.55, f*1.2); }, i*55);
       });
     },
-
     allTowersActivated() {
       init();
-      // Fanfare
       [262,330,392,523,659,784].forEach((f,i)=>{
         setTimeout(()=>{ osc('triangle', f, 0.35, 0.7, f*1.05); }, i*70);
       });
     },
-
     portalSpawn() {
       init();
-      // Deep swirling warp
       osc('sawtooth', 55, 0.4, 1.8, 28);
       osc('sine',    110, 0.25, 1.4, 220);
       setTimeout(()=>{ noise(0.2, 0.6, 400); }, 400);
     },
-
     portalEnter() {
       init();
-      // Accelerating whoosh + pitch up
       osc('sawtooth', 120, 0.5, 1.2, 2400);
       noise(0.3, 1.0, 1200);
       osc('sine', 220, 0.3, 1.2, 3000);
     },
-
     collectItem() {
       init();
       osc('sine', 523, 0.25, 0.25, 880);
       osc('sine', 659, 0.18, 0.2, 1046, 0);
     },
-
     damage() {
       init();
       noise(0.35, 0.18, 180);
       osc('sawtooth', 90, 0.3, 0.2, 60);
     },
-
     land() {
       init();
       osc('sine', 200, 0.15, 0.3, 120);
       noise(0.08, 0.15, 600);
     },
-
     enemyDie() {
       init();
       noise(0.28, 0.3, 350);
       osc('sawtooth', 150, 0.2, 0.3, 55);
     },
-
     sectorStart() {
       init();
-      // New sector arrival beep sequence
       [880, 660, 440, 880].forEach((f,i)=>{
         setTimeout(()=>{ osc('square', f, 0.22, 0.18); }, i*90);
       });
     },
-
     brake() {
       init();
       noise(0.1, 0.12, 800);
     },
-
     shipDestroy() {
       init();
-      // Layer 1: deep bass boom
       osc('sine', 60, 0.6, 1.4, 20);
-      // Layer 2: mid crunch
       osc('sawtooth', 180, 0.45, 0.9, 40);
-      // Layer 3: high crack
       noise(0.5, 0.25, 2200);
-      // Layer 4: debris rattle
       setTimeout(()=>{ noise(0.3, 0.4, 600); }, 120);
       setTimeout(()=>{ osc('sawtooth', 90, 0.25, 0.7, 30); }, 200);
-      // Layer 5: fading rumble
       setTimeout(()=>{ noise(0.18, 0.8, 200); }, 350);
       setTimeout(()=>{ osc('sine', 45, 0.2, 1.0, 18); }, 400);
     },
-
-    // ── Ambient space music ──────────────────────────────────────────
     _musicGain: null,
     _musicNodes: [],
     _musicRunning: false,
-
     startMusic() {
       init();
       if(this._musicRunning) return;
       this._musicRunning = true;
-
-      // Dedicated low-volume bus for music (won't compete with SFX)
       const musicBus = ctx.createGain();
-      musicBus.gain.value = 0; // fade in
+      musicBus.gain.value = 0;
       musicBus.connect(ctx.destination);
       this._musicGain = musicBus;
-
-      // Fade music in gently
       musicBus.gain.linearRampToValueAtTime(2.18, ctx.currentTime + 4);
-
-      // ── Chord sequence: Am - F - C - G (space-ambient feel) ──
-      // Frequencies for each chord (root + fifth + octave, soft sine pads)
       const chords = [
-        [110, 165, 220, 277],   // Am
-        [87,  130, 174, 220],   // F
-        [65,  98,  130, 196],   // C  (low)
-        [98,  147, 196, 247],   // G
+        [110, 165, 220, 277],
+        [87,  130, 174, 220],
+        [65,  98,  130, 196],
+        [98,  147, 196, 247],
       ];
-      const chordDur = 8; // seconds per chord
+      const chordDur = 8;
       let chordIdx = 0;
       const nodes = [];
-
       const playChord = () => {
         if(!this._musicRunning) return;
         const freqs = chords[chordIdx % chords.length];
@@ -218,11 +178,9 @@ const SFX = (() => {
           g.gain.setValueAtTime(0.06 - fi*0.008, ctx.currentTime + chordDur - 2);
           g.gain.linearRampToValueAtTime(0, ctx.currentTime + chordDur);
           g.connect(musicBus);
-
           const o = ctx.createOscillator();
           o.type = fi===0 ? 'sine' : 'triangle';
           o.frequency.value = freq;
-          // Slow vibrato via LFO
           const lfo = ctx.createOscillator();
           const lfoG = ctx.createGain();
           lfo.frequency.value = 0.18 + fi*0.04;
@@ -235,18 +193,14 @@ const SFX = (() => {
         });
         chordIdx++;
       };
-
-      // ── Sub-bass drone — very slow breath ──
       const drone = ctx.createOscillator();
       const droneGain = ctx.createGain();
       drone.type = 'sine';
-      drone.frequency.value = 36.7; // D1 — deep space rumble
+      drone.frequency.value = 36.7;
       droneGain.gain.value = 0.04;
       drone.connect(droneGain); droneGain.connect(musicBus);
       drone.start();
       nodes.push(drone, droneGain);
-
-      // ── Slow LFO on drone volume (breathing effect) ──
       const breathLfo = ctx.createOscillator();
       const breathGain = ctx.createGain();
       breathLfo.frequency.value = 0.07;
@@ -254,12 +208,10 @@ const SFX = (() => {
       breathLfo.connect(breathGain); breathGain.connect(droneGain.gain);
       breathLfo.start();
       nodes.push(breathLfo, breathGain);
-
-      // ── Occasional high shimmer notes ──
       const shimmerFreqs = [880, 1108, 1320, 1760, 987, 1174];
       const playShimmer = () => {
         if(!this._musicRunning) return;
-        const freq = shimmerFreqs[Math.floor(Math.random()*shimmerFreqs.length)];
+        const freq = shimmerFreqs[_MF(Math.random()*shimmerFreqs.length)];
         const g2 = ctx.createGain();
         g2.gain.setValueAtTime(0, ctx.currentTime);
         g2.gain.linearRampToValueAtTime(0.022, ctx.currentTime + 0.8);
@@ -274,18 +226,14 @@ const SFX = (() => {
         setTimeout(playShimmer, nextShimmer);
       };
       setTimeout(playShimmer, 6000);
-
-      // Cycle through chords
       playChord();
       const chordInterval = setInterval(()=>{
         if(!this._musicRunning){ clearInterval(chordInterval); return; }
         playChord();
       }, chordDur * 1000);
       nodes.push({ stop: ()=> clearInterval(chordInterval) });
-
       this._musicNodes = nodes;
     },
-
     stopMusic(fadeDur=2) {
       if(!this._musicRunning || !this._musicGain) return;
       this._musicRunning = false;
@@ -299,58 +247,45 @@ const SFX = (() => {
         this._musicGain = null;
       }, (fadeDur+0.3)*1000);
     },
-
     unlock() { this.init = init; }
   };
 })();
-// ──────────────────────────────────────────────────────────────────────────
-
-function dist(x1,y1,x2,y2){ return Math.sqrt((x2-x1)**2+(y2-y1)**2); }
-function angleTo(x1,y1,x2,y2){ return Math.atan2(y2-y1,x2-x1); }
+function dist(x1,y1,x2,y2){ return _SQ((x2-x1)**2+(y2-y1)**2); }
+function angleTo(x1,y1,x2,y2){ return _A2(y2-y1,x2-x1); }
 function lerp(a,b,t){ return a+(b-a)*t; }
-
 function hasLineOfSight(x1,y1,x2,y2,planets){
   for(const p of planets){
-
     const dx=x2-x1, dy=y2-y1;
     const len2=dx*dx+dy*dy;
     if(len2===0) return true;
     let t=((p.x-x1)*dx+(p.y-y1)*dy)/len2;
-    t=Math.max(0,Math.min(1,t));
+    t=_MX(0,_MN(1,t));
     const cx=x1+t*dx, cy=y1+t*dy;
     if(dist(cx,cy,p.x,p.y)<p.radius-2) return false;
   }
   return true;
 }
-
 class MenuScene extends Phaser.Scene {
   constructor(){ super('Menu'); }
-
   create(){
-    this._page = 'main'; // 'main' | 'instructions' | 'leaderboard'
+    this._page = 'main';
     this._objs = [];
     this.drawBg();
     this.showMain();
-    // Unlock Web Audio on first pointer interaction
     this.input.once('pointerdown', ()=>{ try{ SFX.startEngine(); SFX.stopEngine(); }catch(e){} });
-    // Arcade START1 button launches game
     this.input.keyboard.on('keydown', e => {
       if(e.key==='START1') this.scene.start('Game');
     });
   }
-
   drawBg(){
     const g = this.add.graphics().setDepth(0);
     g.fillStyle(0x000000,1); g.fillRect(0,0,W,H);
-    // Scanlines
     for(let y=0;y<H;y+=4){ g.fillStyle(0x000011,0.3); g.fillRect(0,y,W,2); }
-    // Stars
     for(let i=0;i<220;i++){
       const sz=Math.random()<0.04?2:0.8;
-      g.fillStyle(0xffffff,Phaser.Math.FloatBetween(0.1,0.7));
-      g.fillCircle(Phaser.Math.Between(0,W),Phaser.Math.Between(0,H),sz);
+      g.fillStyle(0xffffff,_PF(0.1,0.7));
+      g.fillCircle(_PB(0,W),_PB(0,H),sz);
     }
-    // Bottom perspective grid
     g.lineStyle(1,0x001133,0.4);
     for(let x=0;x<=W;x+=28){ g.lineBetween(x,H,W/2,H*0.72); }
     g.lineStyle(1,0x001133,0.25);
@@ -360,18 +295,15 @@ class MenuScene extends Phaser.Scene {
     }
     this._bgGfx = g;
   }
-
   clearPage(){
     this._objs.forEach(o=>{ try{ o.destroy(); }catch(e){} });
     this._objs = [];
   }
-
   addObj(o){ this._objs.push(o); return o; }
-
   btn(x, y, label, color, cb){
     const t = this.addObj(
       this.add.text(x, y, label, {
-        fontSize:'22px', fontFamily:'Courier New', color, stroke:'#000000', strokeThickness:2
+        fontSize:'22px', fontFamily:_FF, color, stroke:'#000000', strokeThickness:2
       }).setOrigin(0.5).setInteractive().setDepth(10)
     );
     t.on('pointerover', ()=>{ t.setColor('#ffffff'); t.setScale(1.06); });
@@ -379,32 +311,22 @@ class MenuScene extends Phaser.Scene {
     t.on('pointerdown', cb);
     return t;
   }
-
   showMain(){
     this.clearPage();
-    // Title
-    const t1 = this.addObj(this.add.text(W/2,148,'SECTOR',{fontSize:'72px',fontFamily:'Courier New',color:'#00ffff',stroke:'#003366',strokeThickness:4}).setOrigin(0.5).setDepth(5));
-    const t2 = this.addObj(this.add.text(W/2,222,'DRIFT', {fontSize:'72px',fontFamily:'Courier New',color:'#ff6600',stroke:'#330000',strokeThickness:4}).setOrigin(0.5).setDepth(5));
-    this.addObj(this.add.text(W/2,285,'Navigate · Land · Activate · Escape',{fontSize:'13px',fontFamily:'Courier New',color:'#556677'}).setOrigin(0.5).setDepth(5));
-
+    const t1 = this.addObj(this.add.text(W/2,148,'SECTOR',{fontSize:'72px',fontFamily:_FF,color:'#00ffff',stroke:'#003366',strokeThickness:4}).setOrigin(0.5).setDepth(5));
+    const t2 = this.addObj(this.add.text(W/2,222,'DRIFT', {fontSize:'72px',fontFamily:_FF,color:'#ff6600',stroke:'#330000',strokeThickness:4}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2,285,'Navigate · Land · Activate · Escape',{fontSize:'13px',fontFamily:_FF,color:'#556677'}).setOrigin(0.5).setDepth(5));
     this.tweens.add({targets:[t1,t2],alpha:{from:0.5,to:1},duration:1400,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
-
     this.btn(W/2, 355, '▶  PLAY',          '#ffff00', ()=>this.scene.start('Game'));
     this.btn(W/2, 405, '?  INSTRUCTIONS',  '#44ccff', ()=>this.showInstructions());
     this.btn(W/2, 455, '★  LEADERBOARD',   '#ffcc44', ()=>this.showLeaderboard());
-
-    // Version blip
-    this.addObj(this.add.text(W-8,H-10,'v1.0',{fontSize:'9px',fontFamily:'Courier New',color:'#223344'}).setOrigin(1,1).setDepth(5));
+    this.addObj(this.add.text(W-8,H-10,'v1.0',{fontSize:'9px',fontFamily:_FF,color:'#223344'}).setOrigin(1,1).setDepth(5));
   }
-
   showInstructions(){
     this.clearPage();
-
-    // Title bar
-    this.addObj(this.add.text(W/2,28,'INSTRUCTIONS',{fontSize:'20px',fontFamily:'Courier New',color:'#44ccff',stroke:'#001133',strokeThickness:2,letterSpacing:4}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2,28,'INSTRUCTIONS',{fontSize:'20px',fontFamily:_FF,color:'#44ccff',stroke:'#001133',strokeThickness:2,letterSpacing:4}).setOrigin(0.5).setDepth(5));
     const lineG = this.addObj(this.add.graphics().setDepth(5));
     lineG.lineStyle(1,0x224466,1); lineG.lineBetween(40,44,W-40,44);
-
     const sections = [
       { title:'✦ OBJECTIVE', color:'#ffff00', items:[
         'Land near each antenna for 2s to activate it.',
@@ -439,164 +361,127 @@ class MenuScene extends Phaser.Scene {
         'Bullets do not pass through planets.',
       ]},
     ];
-
     let y = 60;
     sections.forEach(sec=>{
-      this.addObj(this.add.text(30,y,sec.title,{fontSize:'12px',fontFamily:'Courier New',color:sec.color,letterSpacing:2}).setDepth(5));
+      this.addObj(this.add.text(30,y,sec.title,{fontSize:'12px',fontFamily:_FF,color:sec.color,letterSpacing:2}).setDepth(5));
       y+=18;
       sec.items.forEach(item=>{
-        this.addObj(this.add.text(44,y,'· '+item,{fontSize:'10px',fontFamily:'Courier New',color:'#7788aa',wordWrap:{width:W-80}}).setDepth(5));
+        this.addObj(this.add.text(44,y,'· '+item,{fontSize:'10px',fontFamily:_FF,color:'#7788aa',wordWrap:{width:W-80}}).setDepth(5));
         y+=14;
       });
       y+=6;
     });
-
     lineG.lineBetween(40,y,W-40,y);
     this.btn(W/2, y+30, '←  BACK', '#aaaaaa', ()=>this.showMain());
   }
-
   showLeaderboard(){
     this.clearPage();
-
-    this.addObj(this.add.text(W/2,28,'✦  HALL OF FAME  ✦',{fontSize:'22px',fontFamily:'Courier New',color:'#ffdd00',stroke:'#443300',strokeThickness:3}).setOrigin(0.5).setDepth(5));
-
+    this.addObj(this.add.text(W/2,28,'✦  HALL OF FAME  ✦',{fontSize:'22px',fontFamily:_FF,color:'#ffdd00',stroke:'#443300',strokeThickness:3}).setOrigin(0.5).setDepth(5));
     const lineG = this.addObj(this.add.graphics().setDepth(5));
     lineG.lineStyle(1,0x334455,0.8);
     lineG.lineBetween(40,50,W-40,50);
-
-    // Column headers
-    this.addObj(this.add.text(W/2-130,64,'#',      {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0.5).setDepth(5));
-    this.addObj(this.add.text(W/2-88, 64,'NAME', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
-    this.addObj(this.add.text(W/2+16, 64,'PUNTOS', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
-    this.addObj(this.add.text(W/2+108,64,'SECT',   {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
+    this.addObj(this.add.text(W/2-130,64,'#',      {fontSize:'10px',fontFamily:_FF,color:'#334455',letterSpacing:2}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2-88, 64,'NAME', {fontSize:'10px',fontFamily:_FF,color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
+    this.addObj(this.add.text(W/2+16, 64,'PUNTOS', {fontSize:'10px',fontFamily:_FF,color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
+    this.addObj(this.add.text(W/2+108,64,'SECT',   {fontSize:'10px',fontFamily:_FF,color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
     lineG.lineBetween(40,74,W-40,74);
-
     let scores = [];
     try{ scores = JSON.parse(localStorage.getItem('spaceSectorsLB')||'[]'); }catch(e){}
-
     const medals = ['🥇','🥈','🥉'];
     if(scores.length===0){
-      this.addObj(this.add.text(W/2,200,'NO RECORDS YET\nPlay to appear here',{fontSize:'14px',fontFamily:'Courier New',color:'#223344',align:'center'}).setOrigin(0.5).setDepth(5));
+      this.addObj(this.add.text(W/2,200,'NO RECORDS YET\nPlay to appear here',{fontSize:'14px',fontFamily:_FF,color:'#223344',align:'center'}).setOrigin(0.5).setDepth(5));
     } else {
       scores.slice(0,10).forEach((s,i)=>{
         const y = 90+i*34;
         const isTop = i<3;
         const rankCol = i===0?0xffdd00:i===1?0xcccccc:i===2?0xcc8844:0x445566;
         const rankHex = '#'+rankCol.toString(16).padStart(6,'0');
-
         if(isTop){
           const rg = this.addObj(this.add.graphics().setDepth(4));
           rg.fillStyle(rankCol,0.07); rg.fillRect(40,y-13,W-80,28);
         }
-
-        this.addObj(this.add.text(W/2-130,y, i<3?medals[i]:`${i+1}.`, {fontSize:isTop?'16px':'12px',fontFamily:'Courier New',color:rankHex}).setOrigin(0.5).setDepth(5));
-        this.addObj(this.add.text(W/2-88,  y, s.name,                   {fontSize:'18px',fontFamily:'Courier New',color:isTop?'#ffffff':'#7788aa'}).setOrigin(0,0.5).setDepth(5));
-        this.addObj(this.add.text(W/2+16,  y, String(s.score).padStart(7), {fontSize:'15px',fontFamily:'Courier New',color:rankHex}).setOrigin(0,0.5).setDepth(5));
-        this.addObj(this.add.text(W/2+112, y, `${s.sector}`,              {fontSize:'12px',fontFamily:'Courier New',color:'#445566'}).setOrigin(0,0.5).setDepth(5));
+        this.addObj(this.add.text(W/2-130,y, i<3?medals[i]:`${i+1}.`, {fontSize:isTop?'16px':'12px',fontFamily:_FF,color:rankHex}).setOrigin(0.5).setDepth(5));
+        this.addObj(this.add.text(W/2-88,  y, s.name,                   {fontSize:'18px',fontFamily:_FF,color:isTop?'#ffffff':'#7788aa'}).setOrigin(0,0.5).setDepth(5));
+        this.addObj(this.add.text(W/2+16,  y, String(s.score).padStart(7), {fontSize:'15px',fontFamily:_FF,color:rankHex}).setOrigin(0,0.5).setDepth(5));
+        this.addObj(this.add.text(W/2+112, y, `${s.sector}`,              {fontSize:'12px',fontFamily:_FF,color:'#445566'}).setOrigin(0,0.5).setDepth(5));
       });
     }
-
-    const clearBtn = this.addObj(this.add.text(W/2-70,H-55,'[ CLEAR ]',{fontSize:'13px',fontFamily:'Courier New',color:'#553333'}).setOrigin(0.5).setDepth(5).setInteractive());
+    const clearBtn = this.addObj(this.add.text(W/2-70,H-55,'[ CLEAR ]',{fontSize:'13px',fontFamily:_FF,color:'#553333'}).setOrigin(0.5).setDepth(5).setInteractive());
     clearBtn.on('pointerover',()=>clearBtn.setColor('#ff4444'));
     clearBtn.on('pointerout', ()=>clearBtn.setColor('#553333'));
     clearBtn.on('pointerdown',()=>{
       try{ localStorage.removeItem('spaceSectorsLB'); }catch(e){}
       this.showLeaderboard();
     });
-
     this.btn(W/2+70, H-55, '←  BACK', '#aaaaaa', ()=>this.showMain());
   }
 }
-
 class GameOverScene extends Phaser.Scene {
   constructor(){ super('GameOver'); }
   init(data){ this.finalScore=data.score||0; this.sector=data.sector||1; this.reason=data.reason||'hull'; }
-
   create(){
     this.nameChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
-    this.nameIdx = [0,0,0]; // 3 char name
+    this.nameIdx = [0,0,0];
     this.cursor = 0;
     this.submitted = false;
     this.scores = this.loadScores();
-    this.phase = 'entry'; // 'entry' | 'board'
-
+    this.phase = 'entry';
     this.drawBg();
     this.buildEntryUI();
-
-    // Keyboard input
     this.input.keyboard.on('keydown', e => this.handleKey(e));
   }
-
   drawBg(){
     const g = this.add.graphics();
     g.fillStyle(0x000000,1); g.fillRect(0,0,W,H);
-    // Scanlines
     for(let y=0;y<H;y+=4){
       g.fillStyle(0x000011, 0.35); g.fillRect(0,y,W,2);
     }
-    // Stars
     for(let i=0;i<200;i++){
       const sz=Math.random()<0.05?1.5:0.8;
-      g.fillStyle(0xffffff, Phaser.Math.FloatBetween(0.1,0.6));
-      g.fillCircle(Phaser.Math.Between(0,W), Phaser.Math.Between(0,H), sz);
+      g.fillStyle(0xffffff, _PF(0.1,0.6));
+      g.fillCircle(_PB(0,W), _PB(0,H), sz);
     }
-    // Retro grid lines at bottom
     g.lineStyle(1,0x001133,0.5);
     for(let x=0;x<W;x+=32) g.lineBetween(x,H*0.7,W/2,H);
     for(let x=0;x<W;x+=32) g.lineBetween(x,H,W/2,H*0.7);
   }
-
   buildEntryUI(){
     const msg = this.reason==='fuel' ? '★  OUT OF FUEL  ★' : '★  SHIP DESTROYED  ★';
     const col = this.reason==='fuel' ? '#ffaa00' : '#ff4422';
-
-    // Death reason — glitchy flicker
     const title = this.add.text(W/2, 55, msg, {
-      fontSize:'22px', fontFamily:'Courier New', color:col,
+      fontSize:'22px', fontFamily:_FF, color:col,
       stroke:'#000000', strokeThickness:3
     }).setOrigin(0.5);
     this.tweens.add({targets:title, alpha:{from:0.6,to:1}, duration:180, yoyo:true, repeat:-1});
-
-    // Score
-    this.add.text(W/2, 98, `SCORE`, {fontSize:'11px', fontFamily:'Courier New', color:'#445566', letterSpacing:4}).setOrigin(0.5);
-    this.add.text(W/2, 118, `${this.finalScore}`, {fontSize:'36px', fontFamily:'Courier New', color:'#ffff00', stroke:'#555500', strokeThickness:3}).setOrigin(0.5);
-    this.add.text(W/2, 158, `SECTOR ${this.sector}`, {fontSize:'14px', fontFamily:'Courier New', color:'#4488aa'}).setOrigin(0.5);
-
-    // Entry prompt
-    this.add.text(W/2, 200, 'ENTER YOUR NAME', {fontSize:'13px', fontFamily:'Courier New', color:'#aaccff', letterSpacing:3}).setOrigin(0.5);
-    this.add.text(W/2, 218, '↑↓ CHANGE  ←→ CURSOR  ENTER CONFIRM', {fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:1}).setOrigin(0.5);
-
-    // 3-char letter picker
+    this.add.text(W/2, 98, `SCORE`, {fontSize:'11px', fontFamily:_FF, color:'#445566', letterSpacing:4}).setOrigin(0.5);
+    this.add.text(W/2, 118, `${this.finalScore}`, {fontSize:'36px', fontFamily:_FF, color:'#ffff00', stroke:'#555500', strokeThickness:3}).setOrigin(0.5);
+    this.add.text(W/2, 158, `SECTOR ${this.sector}`, {fontSize:'14px', fontFamily:_FF, color:'#4488aa'}).setOrigin(0.5);
+    this.add.text(W/2, 200, 'ENTER YOUR NAME', {fontSize:'13px', fontFamily:_FF, color:'#aaccff', letterSpacing:3}).setOrigin(0.5);
+    this.add.text(W/2, 218, '↑↓ CHANGE  ←→ CURSOR  ENTER CONFIRM', {fontSize:'8px', fontFamily:_FF, color:'#334455', letterSpacing:1}).setOrigin(0.5);
     this._letterObjs = [];
     this._cursorGfx = this.add.graphics().setDepth(5);
     for(let i=0;i<3;i++){
       const x = W/2 + (i-1)*52;
       const ltr = this.add.text(x, 258, this.nameChars[this.nameIdx[i]], {
-        fontSize:'42px', fontFamily:'Courier New', color:'#ffffff',
+        fontSize:'42px', fontFamily:_FF, color:'#ffffff',
         stroke:'#000033', strokeThickness:4
       }).setOrigin(0.5);
       this._letterObjs.push(ltr);
     }
     this.redrawCursor();
-
-    // Leaderboard preview (bottom half)
     this._lbGroup = [];
     this.drawLeaderboardPreview();
-
-    // Submit button hint
     this._submitHint = this.add.text(W/2, 320, '▶  PRESS ENTER TO SUBMIT  ◀', {
-      fontSize:'12px', fontFamily:'Courier New', color:'#44ff88', letterSpacing:2
+      fontSize:'12px', fontFamily:_FF, color:'#44ff88', letterSpacing:2
     }).setOrigin(0.5);
     this.tweens.add({targets:this._submitHint, alpha:{from:0.3,to:1}, duration:600, yoyo:true, repeat:-1});
   }
-
   redrawCursor(){
     const g = this._cursorGfx;
     g.clear();
     const x = W/2 + (this.cursor-1)*52;
     g.lineStyle(3, 0x00ffff, 0.8);
     g.strokeRect(x-22, 238, 44, 50);
-    // Corner accents
     g.lineStyle(2, 0x00ffff, 0.5);
     [[x-22,238],[x+22,238],[x-22,288],[x+22,288]].forEach(([cx,cy],i)=>{
       const sx=i%2===0?1:-1, sy=i<2?1:-1;
@@ -604,31 +489,26 @@ class GameOverScene extends Phaser.Scene {
       g.lineBetween(cx,cy,cx,cy+sy*8);
     });
   }
-
   drawLeaderboardPreview(){
     this._lbGroup.forEach(o=>o.destroy());
     this._lbGroup=[];
     const scores = this.scores.slice(0,8);
-
-    const hdr = this.add.text(W/2, 340, '—  HALL OF FAME  —', {fontSize:'11px', fontFamily:'Courier New', color:'#335566', letterSpacing:4}).setOrigin(0.5);
+    const hdr = this.add.text(W/2, 340, '—  HALL OF FAME  —', {fontSize:'11px', fontFamily:_FF, color:'#335566', letterSpacing:4}).setOrigin(0.5);
     this._lbGroup.push(hdr);
-
     scores.forEach((s,i)=>{
       const y = 360 + i*22;
       const rankCol = i===0?'#ffdd00':i===1?'#cccccc':i===2?'#cc8844':'#445566';
-      const rank = this.add.text(W/2-120, y, `${i+1}.`.padStart(3), {fontSize:'12px', fontFamily:'Courier New', color:rankCol}).setOrigin(0,0.5);
-      const name = this.add.text(W/2-95, y, s.name, {fontSize:'13px', fontFamily:'Courier New', color:i<3?'#ffffff':'#8899aa'}).setOrigin(0,0.5);
-      const sc = this.add.text(W/2+30, y, String(s.score).padStart(7,' '), {fontSize:'13px', fontFamily:'Courier New', color:rankCol}).setOrigin(0,0.5);
-      const sec = this.add.text(W/2+105, y, `S${s.sector}`, {fontSize:'10px', fontFamily:'Courier New', color:'#334455'}).setOrigin(0,0.5);
+      const rank = this.add.text(W/2-120, y, `${i+1}.`.padStart(3), {fontSize:'12px', fontFamily:_FF, color:rankCol}).setOrigin(0,0.5);
+      const name = this.add.text(W/2-95, y, s.name, {fontSize:'13px', fontFamily:_FF, color:i<3?'#ffffff':'#8899aa'}).setOrigin(0,0.5);
+      const sc = this.add.text(W/2+30, y, String(s.score).padStart(7,' '), {fontSize:'13px', fontFamily:_FF, color:rankCol}).setOrigin(0,0.5);
+      const sec = this.add.text(W/2+105, y, `S${s.sector}`, {fontSize:'10px', fontFamily:_FF, color:'#334455'}).setOrigin(0,0.5);
       this._lbGroup.push(rank,name,sc,sec);
     });
-
     if(scores.length===0){
-      const empty = this.add.text(W/2,380,'NO RECORDS YET',{fontSize:'12px',fontFamily:'Courier New',color:'#223344'}).setOrigin(0.5);
+      const empty = this.add.text(W/2,380,'NO RECORDS YET',{fontSize:'12px',fontFamily:_FF,color:'#223344'}).setOrigin(0.5);
       this._lbGroup.push(empty);
     }
   }
-
   handleKey(e){
     if(this.submitted) return;
     const k = e.key;
@@ -639,97 +519,75 @@ class GameOverScene extends Phaser.Scene {
       this.nameIdx[this.cursor]=(this.nameIdx[this.cursor]-1+this.nameChars.length)%this.nameChars.length;
       this._letterObjs[this.cursor].setText(this.nameChars[this.nameIdx[this.cursor]]);
     } else if(k==='ArrowRight'||k==='d'||k==='D'||k==='P1R'){
-      this.cursor=Math.min(2,this.cursor+1); this.redrawCursor();
+      this.cursor=_MN(2,this.cursor+1); this.redrawCursor();
     } else if(k==='ArrowLeft'||k==='a'||k==='A'||k==='P1L'){
-      this.cursor=Math.max(0,this.cursor-1); this.redrawCursor();
+      this.cursor=_MX(0,this.cursor-1); this.redrawCursor();
     } else if(k==='Enter'||k===' '||k==='P1A'||k==='P1B'||k==='START1'){
       this.submitScore();
     }
   }
-
   submitScore(){
     if(this.submitted) return;
     this.submitted=true;
     const name = this.nameIdx.map(i=>this.nameChars[i]).join('');
     this.saveScore(name, this.finalScore, this.sector);
     this.scores = this.loadScores();
-
-    // Flash submitted
     this._submitHint.setText('✦  SUBMITTED  ✦').setColor('#ffff00');
     this._cursorGfx.clear();
     this._letterObjs.forEach((l,i)=>{ l.setColor('#ffff00'); });
-
     this.time.delayedCall(900, ()=>{ this.showFullBoard(); });
   }
-
   showFullBoard(){
-    // Clear everything, show full leaderboard
     this.children.list.slice(0).forEach(o=>{
       if(o.type==='Graphics'||o.type==='Text') try{ o.destroy(); }catch(e){}
     });
-
     this.drawBg();
     const scores = this.scores;
-
     this.add.text(W/2, 32, '✦  HALL OF FAME  ✦', {
-      fontSize:'26px', fontFamily:'Courier New', color:'#ffdd00',
+      fontSize:'26px', fontFamily:_FF, color:'#ffdd00',
       stroke:'#443300', strokeThickness:3
     }).setOrigin(0.5);
-
     const lineG = this.add.graphics();
     lineG.lineStyle(1,0x334455,0.8); lineG.lineBetween(W/2-160,58,W/2+160,58);
-
-    // Column headers
-    this.add.text(W/2-130, 70, '#', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0.5);
-    this.add.text(W/2-85, 70, 'NAME', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
-    this.add.text(W/2+20, 70, 'PUNTOS', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
-    this.add.text(W/2+105, 70, 'SECT', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
+    this.add.text(W/2-130, 70, '#', {fontSize:'10px',fontFamily:_FF,color:'#334455',letterSpacing:2}).setOrigin(0.5);
+    this.add.text(W/2-85, 70, 'NAME', {fontSize:'10px',fontFamily:_FF,color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
+    this.add.text(W/2+20, 70, 'PUNTOS', {fontSize:'10px',fontFamily:_FF,color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
+    this.add.text(W/2+105, 70, 'SECT', {fontSize:'10px',fontFamily:_FF,color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
     lineG.lineBetween(W/2-160,80,W/2+160,80);
-
     const medals = ['🥇','🥈','🥉'];
     scores.slice(0,10).forEach((s,i)=>{
       const y = 96 + i*34;
       const isTop = i<3;
       const rankCol = i===0?0xffdd00:i===1?0xcccccc:i===2?0xcc8844:0x334455;
       const rankHex = '#'+rankCol.toString(16).padStart(6,'0');
-
-      // Row highlight for top 3
       if(isTop){
         const rowG = this.add.graphics();
         rowG.fillStyle(rankCol, 0.06);
         rowG.fillRect(W/2-160, y-12, 320, 28);
       }
-
       const rankTxt = i<3 ? medals[i] : `${i+1}.`;
-      this.add.text(W/2-130, y, rankTxt, {fontSize:isTop?'16px':'12px', fontFamily:'Courier New', color:rankHex}).setOrigin(0.5);
-      this.add.text(W/2-85, y, s.name, {fontSize:'18px', fontFamily:'Courier New', color:isTop?'#ffffff':'#7788aa'}).setOrigin(0,0.5);
-      this.add.text(W/2+20, y, String(s.score).padStart(7), {fontSize:'16px', fontFamily:'Courier New', color:rankHex}).setOrigin(0,0.5);
-      this.add.text(W/2+112, y, `${s.sector}`, {fontSize:'13px', fontFamily:'Courier New', color:'#445566'}).setOrigin(0,0.5);
+      this.add.text(W/2-130, y, rankTxt, {fontSize:isTop?'16px':'12px', fontFamily:_FF, color:rankHex}).setOrigin(0.5);
+      this.add.text(W/2-85, y, s.name, {fontSize:'18px', fontFamily:_FF, color:isTop?'#ffffff':'#7788aa'}).setOrigin(0,0.5);
+      this.add.text(W/2+20, y, String(s.score).padStart(7), {fontSize:'16px', fontFamily:_FF, color:rankHex}).setOrigin(0,0.5);
+      this.add.text(W/2+112, y, `${s.sector}`, {fontSize:'13px', fontFamily:_FF, color:'#445566'}).setOrigin(0,0.5);
     });
-
     lineG.lineBetween(W/2-160, 96+10*34-8, W/2+160, 96+10*34-8);
-
-    const retry = this.add.text(W/2-80, H-60, '[ RETRY ]', {fontSize:'16px', fontFamily:'Courier New', color:'#44ff88', stroke:'#002200', strokeThickness:2}).setOrigin(0.5).setInteractive();
+    const retry = this.add.text(W/2-80, H-60, '[ RETRY ]', {fontSize:'16px', fontFamily:_FF, color:'#44ff88', stroke:'#002200', strokeThickness:2}).setOrigin(0.5).setInteractive();
     retry.on('pointerover',()=>retry.setColor('#ffffff'));
     retry.on('pointerout',()=>retry.setColor('#44ff88'));
     retry.on('pointerdown',()=>this.scene.start('Game'));
-
-    const menu = this.add.text(W/2+80, H-60, '[ MENU ]', {fontSize:'16px', fontFamily:'Courier New', color:'#aaaaaa'}).setOrigin(0.5).setInteractive();
+    const menu = this.add.text(W/2+80, H-60, '[ MENU ]', {fontSize:'16px', fontFamily:_FF, color:'#aaaaaa'}).setOrigin(0.5).setInteractive();
     menu.on('pointerover',()=>menu.setColor('#ffffff'));
     menu.on('pointerout',()=>menu.setColor('#aaaaaa'));
     menu.on('pointerdown',()=>this.scene.start('Menu'));
-
-    // Blinking cursor on buttons
     this.tweens.add({targets:[retry,menu], alpha:{from:0.7,to:1}, duration:800, yoyo:true, repeat:-1});
   }
-
   loadScores(){
     try{
       const raw = localStorage.getItem('spaceSectorsLB');
       return raw ? JSON.parse(raw) : [];
     }catch(e){ return []; }
   }
-
   saveScore(name, score, sector){
     try{
       let scores = this.loadScores();
@@ -740,17 +598,13 @@ class GameOverScene extends Phaser.Scene {
     }catch(e){}
   }
 }
-
 class GameScene extends Phaser.Scene {
   constructor(){ super('Game'); }
-
   init(){
     this.sector = 1;
     this.score = 0;
-
     this.upgrades = { weapon:0, extraTank:0 };
   }
-
   create(){
     this.cameras.main.setBackgroundColor('#00000f');
     this.generateSector();
@@ -760,9 +614,7 @@ class GameScene extends Phaser.Scene {
     this.sectorTransition = false;
     SFX.startMusic();
   }
-
   generateSector(){
-
     if(this.fuelDepots) this.fuelDepots.forEach(f=>{ if(f.gfx) f.gfx.destroy(); if(f.label) f.label.destroy(); });
     if(this.asteroids) this.asteroids.forEach(a=>{ if(a.gfx) a.gfx.destroy(); });
     if(this.planets) this.planets.forEach(p=>{ if(p.gfx) p.gfx.destroy(); if(p.label) p.label.destroy(); if(p.ring) p.ring.destroy(); });
@@ -776,29 +628,23 @@ class GameScene extends Phaser.Scene {
     if(this.sectorLabel) this.sectorLabel.destroy();
     if(this.particles) this.particles.destroy();
     if(this.planetTurrets) this.planetTurrets.forEach(t=>{ if(t.gfx) t.gfx.destroy(); });
-
     const s = this.sector;
     const g = this.add.graphics();
     this.starfield = g;
-
     for(let i=0;i<180;i++){
-      const x=Phaser.Math.Between(0,W), y=Phaser.Math.Between(0,H);
-      const r=Phaser.Math.FloatBetween(0.5,1.8);
-      const bright = Phaser.Math.FloatBetween(0.2,0.9);
+      const x=_PB(0,W), y=_PB(0,H);
+      const r=_PF(0.5,1.8);
+      const bright = _PF(0.2,0.9);
       g.fillStyle(0xffffff, bright);
       g.fillCircle(x,y,r);
     }
-
     for(let i=0;i<4;i++){
-      const x=Phaser.Math.Between(50,W-50), y=Phaser.Math.Between(50,H-50);
+      const x=_PB(50,W-50), y=_PB(50,H-50);
       const col = [0x001133,0x110022,0x001122,0x002211][i%4];
       g.fillStyle(col, 0.3);
-      g.fillEllipse(x,y,Phaser.Math.Between(80,200),Phaser.Math.Between(60,150));
+      g.fillEllipse(x,y,_PB(80,200),_PB(60,150));
     }
-
-    this.sectorLabel = this.add.text(W/2, 18, `SECTOR ${s}`, {fontSize:'14px',fontFamily:'Courier New',color:'#335577'}).setOrigin(0.5).setDepth(10);
-
-    // Sector 1: sidebar hint panel on the right
+    this.sectorLabel = this.add.text(W/2, 18, `SECTOR ${s}`, {fontSize:'14px',fontFamily:_FF,color:'#335577'}).setOrigin(0.5).setDepth(10);
     if(this._hintBg) this._hintBg.forEach(o=>{ try{o.destroy();}catch(e){} });
     this._hintBg = [];
     if(s===1){
@@ -806,27 +652,20 @@ class GameScene extends Phaser.Scene {
       const panelY = H/2 - 110;
       const panelW = 138;
       const panelH = 266;
-
-      // Panel background
       const panelGfx = this.add.graphics().setDepth(8);
       panelGfx.fillStyle(0x001122, 0.82);
       panelGfx.fillRoundedRect(panelX, panelY, panelW, panelH, 6);
       panelGfx.lineStyle(1, 0x0055aa, 0.7);
       panelGfx.strokeRoundedRect(panelX, panelY, panelW, panelH, 6);
       this._hintBg.push(panelGfx);
-
-      // Header
       const header = this.add.text(panelX + panelW/2, panelY + 14, '[ TUTORIAL ]', {
-        fontSize:'9px', fontFamily:'Courier New', color:'#44ccff', letterSpacing:3
+        fontSize:'9px', fontFamily:_FF, color:'#44ccff', letterSpacing:3
       }).setOrigin(0.5).setDepth(9);
       this._hintBg.push(header);
-
-      // Divider
       const divG = this.add.graphics().setDepth(9);
       divG.lineStyle(1, 0x003366, 0.8);
       divG.lineBetween(panelX+8, panelY+24, panelX+panelW-8, panelY+24);
       this._hintBg.push(divG);
-
       const steps = [
         { icon:'🚀', text:'Move the ship\nwith WASD' },
         { icon:'🪐', text:'Land on\nthe planet' },
@@ -834,39 +673,33 @@ class GameScene extends Phaser.Scene {
         { icon:'🌀', text:'Enter the\nBlack Hole' },
         { icon:'⚡', text:'With weapon:\npress K to shoot' },
       ];
-
       steps.forEach((step, i) => {
         const sy = panelY + 38 + i * 46;
         const iconObj = this.add.text(panelX + 14, sy + 4, step.icon, {
           fontSize:'18px'
         }).setOrigin(0, 0.5).setDepth(9);
         const textObj = this.add.text(panelX + 38, sy, step.text, {
-          fontSize:'10px', fontFamily:'Courier New', color:'#88bbdd',
+          fontSize:'10px', fontFamily:_FF, color:'#88bbdd',
           lineSpacing: 3, wordWrap:{width: panelW - 46}
         }).setOrigin(0, 0.5).setDepth(9);
-        // Step number circle
         const numG = this.add.graphics().setDepth(9);
         numG.fillStyle(0x0055aa, 0.7);
         numG.fillCircle(panelX + 14, sy + 4, 9);
         numG.lineStyle(1, 0x0088ff, 0.6);
         numG.strokeCircle(panelX + 14, sy + 4, 9);
         const numTxt = this.add.text(panelX + 14, sy + 4, `${i+1}`, {
-          fontSize:'9px', fontFamily:'Courier New', color:'#ffffff'
+          fontSize:'9px', fontFamily:_FF, color:'#ffffff'
         }).setOrigin(0.5).setDepth(10);
         this._hintBg.push(iconObj, textObj, numG, numTxt);
       });
-
-      // Fade out after 20s
       this.time.delayedCall(16000, ()=>{
         if(this._hintBg && this.sector===1){
           this._hintBg.forEach(o=>{ this.tweens.add({targets:o, alpha:0, duration:3000}); });
         }
       });
     }
-
-    const numPlanets = s===1 ? 1 : Math.min(2+Math.floor(s/2.5), 6);
-    const numTowers  = s===1 ? 1 : Math.min(1+Math.ceil(s*0.92), numPlanets*2);
-
+    const numPlanets = s===1 ? 1 : _MN(2+_MF(s/2.5), 6);
+    const numTowers  = s===1 ? 1 : _MN(1+Math.ceil(s*0.92), numPlanets*2);
     this.planets = [];
     this.towers = [];
     this.enemies = [];
@@ -881,45 +714,36 @@ class GameScene extends Phaser.Scene {
     this.landingTimer = 0;
     this.landingTower = null;
     this.activeTowers = 0;
-
     const positions = [];
     for(let i=0;i<numPlanets;i++){
       let x,y,tries=0;
       if(s===1 && i===0){
-        // Sector 1: place the single planet in the center-left for easy visibility
-        x = Phaser.Math.Between(Math.floor(W*0.25), Math.floor(W*0.5));
-        y = Phaser.Math.Between(Math.floor(H*0.35), Math.floor(H*0.65));
+        x = _PB(_MF(W*0.25), _MF(W*0.5));
+        y = _PB(_MF(H*0.35), _MF(H*0.65));
       } else {
         do {
-          x = Phaser.Math.Between(80,W-80);
-          y = Phaser.Math.Between(80,H-80);
+          x = _PB(80,W-80);
+          y = _PB(80,H-80);
           tries++;
         } while(tries<50 && positions.some(p=>dist(p.x,p.y,x,y)<180));
       }
       positions.push({x,y});
       this.createPlanet(x,y,i);
     }
-
-    // Spawn turrets first (sector 4+) so antennas can avoid them
     if(s>=4){
-      const numTurrets = Math.min(1 + Math.floor((s-3)*0.9), 6);
+      const numTurrets = _MN(1 + _MF((s-3)*0.9), 6);
       for(let ti=0;ti<numTurrets;ti++){
         const planet = this.planets[ti % this.planets.length];
-        // Place turret at a "reserved" angle — opposite side of where antennas will go
-        // Turrets use offset of PI so they naturally land on the far side
-        const baseAngle = (ti/Math.max(numTurrets,1))*Math.PI*2 + Math.PI + Math.random()*0.4 - 0.2;
+        const baseAngle = (ti/_MX(numTurrets,1))*Math.PI*2 + Math.PI + Math.random()*0.4 - 0.2;
         this.createPlanetTurret(planet, baseAngle);
       }
     }
-
-    // Spawn antenna towers AFTER turrets, avoiding turret angles by at least PI/2
-    for(let i=0;i<Math.min(numTowers,numPlanets*2);i++){
+    for(let i=0;i<_MN(numTowers,numPlanets*2);i++){
       const planet = this.planets[i % this.planets.length];
       const turretAnglesOnPlanet = this.planetTurrets
         .filter(t=>t.planet===planet)
         .map(t=>t.angle);
       let angle = (i/numTowers)*Math.PI*2 + Math.random()*0.5;
-      // Try to find an angle at least PI/2 away from every turret on this planet
       for(let attempt=0; attempt<24; attempt++){
         const candidate = angle + attempt*(Math.PI/12);
         const tooClose = turretAnglesOnPlanet.some(ta=>{
@@ -931,41 +755,33 @@ class GameScene extends Phaser.Scene {
       }
       this.createTower(planet, angle);
     }
-
     if(s>1){
-      // Max 3 items total. Never spawn on top of antenna towers OR planet turrets.
       const blockedPositions = [
         ...this.towers.map(t=>({x:t.x,y:t.y})),
-        ...this.planetTurrets.map(t=>({x:t.bx+Math.cos(t.angle)*12, y:t.by+Math.sin(t.angle)*12})),
+        ...this.planetTurrets.map(t=>({x:t.bx+_C(t.angle)*12, y:t.by+_S(t.angle)*12})),
       ];
       const isFarFromTowers = (x,y) => blockedPositions.every(t=>dist(x,y,t.x,t.y)>36);
-
       const spawnItemOnPlanet = (planet, angleHint) => {
         for(let attempt=0; attempt<12; attempt++){
           const a = angleHint + attempt*(Math.PI*2/12);
-          const ix = planet.x + Math.cos(a)*(planet.radius+22);
-          const iy = planet.y + Math.sin(a)*(planet.radius+22);
+          const ix = planet.x + _C(a)*(planet.radius+22);
+          const iy = planet.y + _S(a)*(planet.radius+22);
           if(isFarFromTowers(ix,iy)) return {x:ix, y:iy};
         }
         return null;
       };
-
-      // Build pool: 1 fuel + 1 health + 1 upgrade (or 2nd fuel if maxed)
-      // Sector 3: always guarantee a weapon upgrade if the player doesn't have one yet
       const allUpgrades = ['weapon','extraTank'].filter(t=>(this.upgrades[t]||0)<3);
       const itemPool = [{kind:'fuel'}, {kind:'health'}];
       if(s===3 && (this.upgrades.weapon||0)===0){
-        // Force weapon — player needs it for sector 3+ enemies and turrets
         itemPool.push({kind:'upgrade', type:'weapon'});
       } else if(allUpgrades.length>0){
-        const upg = allUpgrades[Phaser.Math.Between(0,allUpgrades.length-1)];
+        const upg = allUpgrades[_PB(0,allUpgrades.length-1)];
         itemPool.push({kind:'upgrade', type:upg});
       } else {
         itemPool.push({kind:'fuel'});
       }
-      // Shuffle
       for(let i=itemPool.length-1;i>0;i--){
-        const j=Math.floor(Math.random()*(i+1));
+        const j=_MF(Math.random()*(i+1));
         [itemPool[i],itemPool[j]]=[itemPool[j],itemPool[i]];
       }
       let spawned=0;
@@ -980,64 +796,55 @@ class GameScene extends Phaser.Scene {
         spawned++;
       }
     }
-
     if(s>=3){
-      const numEnemies = Math.min(Math.floor((s-2)*1.38), 7);
+      const numEnemies = _MN(_MF((s-2)*1.38), 7);
       for(let i=0;i<numEnemies;i++){
-        const px = Phaser.Math.Between(50,W-50);
-        const py = Phaser.Math.Between(50,H-50);
+        const px = _PB(50,W-50);
+        const py = _PB(50,H-50);
         this.createEnemy(px,py);
       }
     }
-    const numAsteroids = s===1 ? 0 : 3 + Math.floor(s * 1.1);
+    const numAsteroids = s===1 ? 0 : 3 + _MF(s * 1.1);
     for(let ai=0; ai<numAsteroids; ai++){
       let ax, ay, tries=0;
       do {
-        ax = Phaser.Math.Between(30, W-30);
-        ay = Phaser.Math.Between(30, H-30);
+        ax = _PB(30, W-30);
+        ay = _PB(30, H-30);
         tries++;
       } while(tries<80 && this.planets.some(p=>dist(ax,ay,p.x,p.y)<p.radius+40));
-
       const minR = s>=5 ? 6 : 4;
       const maxR = s>=7 ? 22 : s>=4 ? 16 : 10;
-      const radius = Phaser.Math.Between(minR, maxR);
-      const speed  = Phaser.Math.FloatBetween(14, 32 + s*2.76);
-      const angle  = Phaser.Math.FloatBetween(0, Math.PI*2);
-      const spin   = Phaser.Math.FloatBetween(-1.5, 1.5);
+      const radius = _PB(minR, maxR);
+      const speed  = _PF(14, 32 + s*2.76);
+      const angle  = _PF(0, Math.PI*2);
+      const spin   = _PF(-1.5, 1.5);
       const g = this.add.graphics().setDepth(3);
-      const ast = {x:ax, y:ay, vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed, radius, spin, rot:0, gfx:g, hp: Math.ceil(radius/4)};
+      const ast = {x:ax, y:ay, vx:_C(angle)*speed, vy:_S(angle)*speed, radius, spin, rot:0, gfx:g, hp: Math.ceil(radius/4)};
       this.drawAsteroid(ast);
       this.asteroids.push(ast);
     }
   }
-
   createPlanet(x,y,idx){
     const colors = [0x3366cc,0x66aa33,0xcc6633,0x9933cc,0x33aacc,0xaa3366];
     const color = colors[idx%colors.length];
-    const radius = Phaser.Math.Between(25,50);
-    const gravity = Phaser.Math.FloatBetween(40, 88) * (1 + this.sector * 0.0276);
+    const radius = _PB(25,50);
+    const gravity = _PF(40, 88) * (1 + this.sector * 0.0276);
     const gravRadius = radius*4.5;
     const hasResources = Math.random()>0.4;
-    const resourceType = ['fuel','energy','health'][Phaser.Math.Between(0,2)];
-    let resourceAmt = hasResources ? Phaser.Math.Between(20,60) : 0;
-
+    const resourceType = ['fuel','energy','health'][_PB(0,2)];
+    let resourceAmt = hasResources ? _PB(20,60) : 0;
     const g = this.add.graphics();
     g.setDepth(1);
-
     g.fillStyle(color, 0.04);
     g.fillCircle(x,y,gravRadius);
     g.lineStyle(1, color, 0.15);
     g.strokeCircle(x,y,gravRadius);
-
     g.fillStyle(color, 1);
     g.fillCircle(x,y,radius);
-
     g.fillStyle(0xffffff,0.15);
     g.fillCircle(x-radius*0.3, y-radius*0.3, radius*0.4);
-
     g.lineStyle(2, 0x000000, 0.5);
     g.strokeCircle(x,y,radius);
-
     let ring = null;
     if(hasResources){
       ring = this.add.graphics().setDepth(2);
@@ -1045,52 +852,40 @@ class GameScene extends Phaser.Scene {
       ring.lineStyle(2, rc, 0.6);
       ring.strokeCircle(x,y,radius+5);
     }
-
-    const label = this.add.text(x,y+radius+8, hasResources?resourceType.toUpperCase():'', {fontSize:'9px',fontFamily:'Courier New',color:'#aaaaaa'}).setOrigin(0.5).setDepth(3);
-
+    const label = this.add.text(x,y+radius+8, hasResources?resourceType.toUpperCase():'', {fontSize:'9px',fontFamily:_FF,color:'#aaaaaa'}).setOrigin(0.5).setDepth(3);
     this.planets.push({x,y,radius,gravity,gravRadius,color,hasResources,resourceType,resourceAmt,gfx:g,ring,label});
   }
-
   createTower(planet, angle){
-    // Base sits exactly on planet surface, antenna points outward
-    const baseX = planet.x + Math.cos(angle) * planet.radius;
-    const baseY = planet.y + Math.sin(angle) * planet.radius;
-    // Tip position (antenna extends outward from surface)
+    const baseX = planet.x + _C(angle) * planet.radius;
+    const baseY = planet.y + _S(angle) * planet.radius;
     const antennaLen = 22;
-    const tipX = planet.x + Math.cos(angle) * (planet.radius + antennaLen);
-    const tipY = planet.y + Math.sin(angle) * (planet.radius + antennaLen);
-
+    const tipX = planet.x + _C(angle) * (planet.radius + antennaLen);
+    const tipY = planet.y + _S(angle) * (planet.radius + antennaLen);
     const g = this.add.graphics().setDepth(4);
     const beam = this.add.graphics().setDepth(3);
     const timerBar = this.add.graphics().setDepth(5);
-
-    // Store interaction point slightly above surface
-    const ix = planet.x + Math.cos(angle) * (planet.radius + 14);
-    const iy = planet.y + Math.sin(angle) * (planet.radius + 14);
-
+    const ix = planet.x + _C(angle) * (planet.radius + 14);
+    const iy = planet.y + _S(angle) * (planet.radius + 14);
     const tower = {
-      x: ix, y: iy,          // interaction/collision point
-      baseX, baseY,           // where it meets the planet
-      tipX, tipY,             // antenna tip
-      angle,                  // outward angle from planet center
+      x: ix, y: iy,
+      baseX, baseY,
+      tipX, tipY,
+      angle,
       planet, gfx:g, beam, timer:timerBar,
       active:false, activationProgress:0,
-      tickPhase: Math.random()*Math.PI*2  // stagger blink timing
+      tickPhase: Math.random()*Math.PI*2
     };
     this.drawTowerGfx(tower);
     this.towers.push(tower);
   }
-
   drawTowerGfx(t){
     const g = t.gfx;
     g.clear();
     const {baseX,baseY,tipX,tipY,angle,active} = t;
     const dx = tipX-baseX, dy = tipY-baseY;
-    const len = Math.sqrt(dx*dx+dy*dy);
-    const nx = dx/len, ny = dy/len;   // outward normal
-    const rx = -ny, ry = nx;          // tangent
-
-    // Base plate (flat on planet surface)
+    const len = _SQ(dx*dx+dy*dy);
+    const nx = dx/len, ny = dy/len;
+    const rx = -ny, ry = nx;
     const bw = 7;
     g.fillStyle(0x445566, 1);
     g.fillTriangle(
@@ -1104,31 +899,22 @@ class GameScene extends Phaser.Scene {
       baseX - rx*bw,  baseY - ry*bw,
       baseX + nx*5,   baseY + ny*5
     );
-
-    // Main antenna shaft
     const midX = baseX + nx*12, midY = baseY + ny*12;
     g.lineStyle(2, active ? 0x00cc88 : 0x556677, 1);
     g.lineBetween(baseX+nx*4, baseY+ny*4, tipX, tipY);
-
-    // Cross-bar (horizontal strut)
     const cbLen = 5;
     g.lineStyle(1, active ? 0x00aa66 : 0x445566, 0.9);
     g.lineBetween(midX+rx*cbLen, midY+ry*cbLen, midX-rx*cbLen, midY-ry*cbLen);
-
-    // Second smaller cross-bar closer to tip
     const cb2X = baseX+nx*18, cb2Y = baseY+ny*18;
     const cb2Len = 3;
     g.lineStyle(1, active ? 0x00aa66 : 0x445566, 0.7);
     g.lineBetween(cb2X+rx*cb2Len, cb2Y+ry*cb2Len, cb2X-rx*cb2Len, cb2Y-ry*cb2Len);
-
     if(!active){
-      // Inactive: small dim bulb at tip
       g.fillStyle(0xffff00, 0.25);
       g.fillCircle(tipX, tipY, 3);
       g.lineStyle(1, 0x888800, 0.4);
       g.strokeCircle(tipX, tipY, 3);
     } else {
-      // Active: bright glowing orb at tip
       g.fillStyle(0x00ffcc, 0.3);
       g.fillCircle(tipX, tipY, 8);
       g.fillStyle(0x00ffff, 0.9);
@@ -1137,51 +923,41 @@ class GameScene extends Phaser.Scene {
       g.strokeCircle(tipX, tipY, 10);
     }
   }
-
   drawFuelDepotGfx(g, x, y, level){
     g.clear();
-
     const colors = [0xffaa00, 0xff7700, 0xff3300];
-    const col = colors[Math.min(level-1,2)];
+    const col = colors[_MN(level-1,2)];
     const sz = 6 + level*2;
-
     g.fillStyle(col, 1);
     g.fillRect(x-sz, y-sz-2, sz*2, sz*2+2);
-
     g.fillStyle(0xffffff, 0.4);
     g.fillRect(x-sz*0.6, y-sz-6, sz*1.2, 5);
     g.lineStyle(1, 0x000000, 0.6);
     g.strokeRect(x-sz, y-sz-2, sz*2, sz*2+2);
-
     for(let i=0;i<level;i++){
       g.lineStyle(2, 0xffffff, 0.35);
       g.lineBetween(x-sz+2, y-sz+4+i*5, x+sz-2, y-sz+4+i*5);
     }
-
     g.lineStyle(1+level, col, 0.45);
     g.strokeCircle(x, y, sz+8+level*2);
-
     if(level>=3){
       g.lineStyle(1, 0xff8800, 0.7);
       g.strokeTriangle(x,y-sz-8, x-6,y-sz-2, x+6,y-sz-2);
     }
   }
-
   createFuelDepot(x, y, planet){
-    const level = Math.min(1 + Math.floor((this.sector-1)/2), 3);
+    const level = _MN(1 + _MF((this.sector-1)/2), 3);
     const g = this.add.graphics().setDepth(4);
-    const amount = 25 + level*15 + Phaser.Math.Between(0, 15);
+    const amount = 25 + level*15 + _PB(0, 15);
     this.drawFuelDepotGfx(g, x, y, level);
-    const label = this.add.text(x, y + 22 + level*2, `⛽ +${amount}`, {fontSize:'8px', fontFamily:'Courier New', color:'#ffaa00'}).setOrigin(0.5).setDepth(5);
+    const label = this.add.text(x, y + 22 + level*2, `⛽ +${amount}`, {fontSize:'8px', fontFamily:_FF, color:'#ffaa00'}).setOrigin(0.5).setDepth(5);
     this.fuelDepots = this.fuelDepots || [];
     this.fuelDepots.push({x, y, gfx:g, label, amount, collected:false, level});
   }
-
   createWreck(x,y,type){
     const curLvl = this.upgrades[type]||0;
     const nextLvl = curLvl+1;
     const g = this.add.graphics().setDepth(4);
-
     const typeConf = {
       weapon:     {col:0xffdd00, col2:0xff8800},
       shield:     {col:0x44aaff, col2:0x0055ff},
@@ -1190,17 +966,14 @@ class GameScene extends Phaser.Scene {
     };
     const {col,col2} = typeConf[type]||{col:0xffa500,col2:0xff5500};
     const sz = 7 + nextLvl*2;
-
     g.lineStyle(2, col, 0.9);
     if(type==='weapon'){
-
       g.lineBetween(x-sz,y-sz,x+sz,y+sz);
       g.lineBetween(x+sz,y-sz,x-sz,y+sz);
       for(let i=0;i<nextLvl;i++){
         g.fillStyle(col,0.7); g.fillCircle(x+(i-1)*6,y,3);
       }
     } else if(type==='extraTank'){
-
       for(let i=0;i<nextLvl;i++){
         const ox = (i-(nextLvl-1)/2)*9;
         g.fillStyle(col,0.7); g.fillRect(x+ox-3,y-sz+2,6,sz*2-4);
@@ -1208,82 +981,63 @@ class GameScene extends Phaser.Scene {
         g.lineStyle(1,col,0.9); g.strokeRect(x+ox-3,y-sz+2,6,sz*2-4);
       }
     } else {
-      // HEALTH: wrench shape (mechanic key)
       g.fillStyle(col, 1);
-      // Handle
       g.fillRect(x-2, y-sz+2, 4, sz*2-6);
-      // Head circle (socket part)
       g.fillCircle(x, y-sz+4, 5+nextLvl);
       g.fillStyle(0x000000, 0.5);
       g.fillCircle(x, y-sz+4, 2+nextLvl*0.5);
-      // Tail fork
       g.fillStyle(col, 1);
       g.fillRect(x-4, y+sz-8, 4, 6);
       g.fillRect(x, y+sz-8, 4, 6);
-      // Outline
       g.lineStyle(1, col2, 0.8);
       g.strokeCircle(x, y-sz+4, 5+nextLvl);
       g.strokeRect(x-2, y-sz+2, 4, sz*2-6);
       g.lineStyle(1,col,0.3); g.strokeCircle(x,y,sz+4);
     }
-
     g.lineStyle(1,col,0.3); g.strokeCircle(x,y,sz+10);
     const wlabel = curLvl>0 ? `${type.toUpperCase()} Lv${nextLvl}` : type.toUpperCase();
-    const label = this.add.text(x,y-sz-14,wlabel,{fontSize:'8px',fontFamily:'Courier New',color:'#'+col.toString(16).padStart(6,'0')}).setOrigin(0.5).setDepth(5);
+    const label = this.add.text(x,y-sz-14,wlabel,{fontSize:'8px',fontFamily:_FF,color:'#'+col.toString(16).padStart(6,'0')}).setOrigin(0.5).setDepth(5);
     this.wrecks.push({x,y,type,gfx:g,label,collected:false});
   }
-
   createEnemy(x,y){
-
-    // Type progression:
-    // sector 1-2: type 0 (fighter, 1 shot)
-    // sector 3-4: type 0 or type 1 (double-shot fighter)
-    // sector 5-6: + type 2 (drone, rapid)
-    // sector 7+:  + type 3 (bomber, triple spread)
     const maxType = this.sector>=7 ? 3 : this.sector>=5 ? 2 : this.sector>=3 ? 1 : 0;
-    const type = Phaser.Math.Between(0, maxType);
+    const type = _PB(0, maxType);
     const g = this.add.graphics().setDepth(6);
     const hp = ([3,4,2,6][type]||3) + Math.ceil(this.sector*0.92);
     const spd = type===2 ? 55 : 40;
     this.drawEnemyShip(g,x,y,0,false,false,type,hp,hp);
     this.enemies.push({
       x,y,
-      vx:Phaser.Math.FloatBetween(-spd,spd),
-      vy:Phaser.Math.FloatBetween(-spd,spd),
+      vx:_PF(-spd,spd),
+      vy:_PF(-spd,spd),
       gfx:g, hp, maxHp:hp, fireTimer:0, state:'patrol', targetAngle:0,
       type,
     });
   }
   createPlanetTurret(planet, angle){
-    const bx = planet.x + Math.cos(angle)*planet.radius;
-    const by = planet.y + Math.sin(angle)*planet.radius;
+    const bx = planet.x + _C(angle)*planet.radius;
+    const by = planet.y + _S(angle)*planet.radius;
     const g = this.add.graphics().setDepth(5);
-    const hp = 2 + Math.floor(this.sector*0.5);
+    const hp = 2 + _MF(this.sector*0.5);
     const turret = { planet, angle, bx, by, gfx:g, hp, maxHp:hp, fireTimer: Math.random()*3, aimAngle:0 };
     this.drawPlanetTurretGfx(turret, 0);
     this.planetTurrets.push(turret);
   }
-
   drawPlanetTurretGfx(t, aimAngle){
     const g = t.gfx;
     g.clear();
     const {bx,by,planet,angle} = t;
-    const nx = Math.cos(angle), ny = Math.sin(angle);
+    const nx = _C(angle), ny = _S(angle);
     const rx = -ny, ry = nx;
     const hpRatio = t.hp/t.maxHp;
-
-    // Color theme based on HP
     const baseCol  = hpRatio>0.6 ? 0xdd3300 : hpRatio>0.3 ? 0xff7700 : 0xff2200;
     const glowCol  = hpRatio>0.6 ? 0xff4400 : hpRatio>0.3 ? 0xffaa00 : 0xff6600;
     const darkCol  = 0x1a0800;
-
-    // ── Foundation slab (flat hexagon on planet surface) ──
     const hw = 10, hd = 6;
     const pts = [];
     for(let i=0;i<6;i++){
       const a = (i/6)*Math.PI*2 + angle;
-      const sx2 = hw * Math.cos(a), sy2 = hd * Math.sin(a);
-      // flatten along planet surface tangent
+      const sx2 = hw * _C(a), sy2 = hd * _S(a);
       pts.push({ x: bx + rx*sx2 + nx*sy2*0.4, y: by + ry*sx2 + ny*sy2*0.4 });
     }
     g.fillStyle(0x2a1500,1);
@@ -1294,80 +1048,60 @@ class GameScene extends Phaser.Scene {
     g.beginPath(); g.moveTo(pts[0].x,pts[0].y);
     for(let i=1;i<pts.length;i++) g.lineTo(pts[i].x,pts[i].y);
     g.closePath(); g.strokePath();
-
-    // ── Mounting strut ──
     const strutBase = { x: bx + nx*2,  y: by + ny*2  };
     const strutTop  = { x: bx + nx*10, y: by + ny*10 };
     g.lineStyle(4, darkCol, 1);
     g.lineBetween(strutBase.x, strutBase.y, strutTop.x, strutTop.y);
     g.lineStyle(2, baseCol, 0.5);
     g.lineBetween(strutBase.x, strutBase.y, strutTop.x, strutTop.y);
-
-    // ── Turret body (ring + armored shell) ──
     const tx = bx + nx*12, ty = by + ny*12;
     g.fillStyle(darkCol,1);       g.fillCircle(tx,ty,9);
     g.fillStyle(baseCol,0.9);     g.fillCircle(tx,ty,7);
     g.lineStyle(2, glowCol, 0.8); g.strokeCircle(tx,ty,7);
-    // inner ring detail
     g.lineStyle(1, 0xffffff, 0.15); g.strokeCircle(tx,ty,4);
-
-    // ── Double barrel ──
     const barLen = 14;
     const offsets = [-2.5, 2.5];
     offsets.forEach(off => {
       const bsx = tx + rx*off, bsy = ty + ry*off;
-      const bex = bsx + Math.cos(aimAngle)*barLen, bey = bsy + Math.sin(aimAngle)*barLen;
-      // barrel casing
+      const bex = bsx + _C(aimAngle)*barLen, bey = bsy + _S(aimAngle)*barLen;
       g.lineStyle(4, darkCol, 1);   g.lineBetween(bsx,bsy,bex,bey);
       g.lineStyle(2, baseCol, 1);   g.lineBetween(bsx,bsy,bex,bey);
-      // muzzle cap
       g.fillStyle(glowCol,1);
       g.fillCircle(bex, bey, 2.5);
     });
-    // barrel bridge
-    const bridgeX = tx + Math.cos(aimAngle)*6, bridgeY = ty + Math.sin(aimAngle)*6;
+    const bridgeX = tx + _C(aimAngle)*6, bridgeY = ty + _S(aimAngle)*6;
     g.lineStyle(3, baseCol, 0.7);
     g.lineBetween(bridgeX + rx*2.5, bridgeY + ry*2.5, bridgeX - rx*2.5, bridgeY - ry*2.5);
-
-    // ── Status light (blinking when alive, dim when low HP) ──
-    const pulse = 0.5 + 0.5*Math.sin(Date.now()/200 + t.angle*10);
+    const pulse = 0.5 + 0.5*_S(Date.now()/200 + t.angle*10);
     const lightCol = hpRatio>0.6 ? 0x00ff88 : hpRatio>0.3 ? 0xffcc00 : 0xff2200;
     g.fillStyle(lightCol, 0.4 + 0.6*pulse);
     g.fillCircle(tx + rx*5, ty + ry*5, 2.5);
     g.lineStyle(1, lightCol, pulse);
     g.strokeCircle(tx + rx*5, ty + ry*5, 3.5);
-
-    // ── HP bar (wider, more visible) ──
     const bw=28, bh=4;
     const barX = tx - bw/2, barY = ty - 20;
-    // bg + fill
     g.fillStyle(0x1a0000,1);     g.fillRect(barX, barY, bw, bh);
     g.fillStyle(baseCol, 1);     g.fillRect(barX, barY, bw*hpRatio, bh);
-    // shine strip
     g.fillStyle(0xffffff, 0.15); g.fillRect(barX, barY, bw*hpRatio, 2);
     g.lineStyle(1, glowCol, 0.6);g.strokeRect(barX, barY, bw, bh);
-    // HP pips
     for(let p=1;p<t.maxHp;p++){
       const pipX = barX + (bw/t.maxHp)*p;
       g.lineStyle(1, darkCol, 0.8); g.lineBetween(pipX, barY, pipX, barY+bh);
     }
   }
-
   updatePlanetTurrets(dt){
     for(let i=this.planetTurrets.length-1;i>=0;i--){
       const t = this.planetTurrets[i];
-      const tx = t.bx + Math.cos(t.angle)*8;
-      const ty = t.by + Math.sin(t.angle)*8;
+      const tx = t.bx + _C(t.angle)*8;
+      const ty = t.by + _S(t.angle)*8;
       const toShip = angleTo(tx,ty,this.ship.x,this.ship.y);
-      // Smoothly rotate barrel toward ship
       let da = toShip - t.aimAngle;
       while(da> Math.PI) da-=Math.PI*2;
       while(da<-Math.PI) da+=Math.PI*2;
-      t.aimAngle += da * Math.min(1, dt*2.5);
+      t.aimAngle += da * _MN(1, dt*2.5);
       this.drawPlanetTurretGfx(t, t.aimAngle);
-      // Fire at player if in range and has line of sight
       const ds = dist(tx,ty,this.ship.x,this.ship.y);
-      const fireRate = 2.5 - Math.min(1.5, this.sector*0.15);
+      const fireRate = 2.5 - _MN(1.5, this.sector*0.15);
       t.fireTimer -= dt;
       if(t.fireTimer<=0 && ds<280 && !this.ship.landed &&
          hasLineOfSight(tx,ty,this.ship.x,this.ship.y,this.planets)){
@@ -1377,17 +1111,15 @@ class GameScene extends Phaser.Scene {
         g2.fillStyle(0xff2200,1); g2.fillCircle(0,0,4);
         g2.fillStyle(0xff8800,0.5); g2.fillCircle(0,0,7);
         g2.x=tx; g2.y=ty;
-        this.enemyBullets.push({x:tx,y:ty,vx:Math.cos(t.aimAngle)*spd,vy:Math.sin(t.aimAngle)*spd,gfx:g2,life:3});
+        this.enemyBullets.push({x:tx,y:ty,vx:_C(t.aimAngle)*spd,vy:_S(t.aimAngle)*spd,gfx:g2,life:3});
       }
     }
   }
-
   drawEnemyShip(g,x,y,angle,alerted,canSee,type=0,hp=1,maxHp=1){
     g.clear();
-
     if(alerted){
       const indCol = canSee ? 0xff2200 : 0xff9900;
-      const pulse = 0.5+0.5*Math.sin(this.time.now/150);
+      const pulse = 0.5+0.5*_S(this.time.now/150);
       g.fillStyle(indCol, 0.6+0.4*pulse);
       g.fillTriangle(x,y-22, x-5,y-13, x+5,y-13);
       g.fillStyle(0xffffff,1);
@@ -1397,9 +1129,7 @@ class GameScene extends Phaser.Scene {
     g.save();
     g.translateCanvas(x,y);
     g.rotateCanvas(angle);
-
     if(type===0){
-      // FIGHTER: red triangle — 1 shot
       const bc = alerted ? 0xff1100 : 0xff3333;
       g.fillStyle(bc,1);
       g.fillTriangle(14,0,-8,-7,-8,7);
@@ -1408,7 +1138,6 @@ class GameScene extends Phaser.Scene {
       g.fillStyle(alerted?0xff8800:0xff6600,0.8);
       g.fillCircle(0,0,4);
     } else if(type===1){
-      // DOUBLE FIGHTER: orange twin-hull — 2 shots spread
       const bc = alerted ? 0xff6600 : 0xff8800;
       g.fillStyle(bc,1);
       g.fillTriangle(13,-4,-7,-9,-7,0);
@@ -1418,7 +1147,6 @@ class GameScene extends Phaser.Scene {
       g.strokeTriangle(13, 4,-7, 0,-7,9);
       g.fillStyle(0xffff88,0.7); g.fillRect(10,-5,5,2); g.fillRect(10,3,5,2);
     } else if(type===2){
-      // DRONE: cyan circle — rapid single
       const bc = alerted ? 0x00ffcc : 0x00aaaa;
       g.fillStyle(bc,0.9); g.fillCircle(0,0,9);
       g.lineStyle(2,0x00ffff,0.8); g.strokeCircle(0,0,9);
@@ -1427,7 +1155,6 @@ class GameScene extends Phaser.Scene {
       g.lineBetween(-12,0,-9,0); g.lineBetween(9,0,12,0);
       g.lineBetween(0,-12,0,-9); g.lineBetween(0,9,0,12);
     } else {
-      // BOMBER (type 3): purple diamond — triple spread, slow+tanky
       const bc = alerted ? 0xcc00ff : 0x9900cc;
       g.fillStyle(bc,1);
       g.fillTriangle(0,-13, 13,0, 0,13);
@@ -1439,9 +1166,7 @@ class GameScene extends Phaser.Scene {
       g.fillStyle(bc,0.8); g.fillRect(-3,-16,6,4); g.fillRect(-3,12,6,4);
     }
     g.restore();
-
-    // ── HP bar (drawn upright, above ship) ──
-    const hpRatio = Math.max(0, hp/maxHp);
+    const hpRatio = _MX(0, hp/maxHp);
     const bw=24, bh=3;
     const barX = x - bw/2, barY = y - 26;
     const hpCol = hpRatio>0.6 ? 0x00ff44 : hpRatio>0.3 ? 0xffaa00 : 0xff3300;
@@ -1451,39 +1176,31 @@ class GameScene extends Phaser.Scene {
     g.fillStyle(0xffffff,0.2); g.fillRect(barX, barY, bw*hpRatio, 1);
     g.lineStyle(1, hpCol, 0.5);g.strokeRect(barX, barY, bw, bh);
   }
-
   findSafeSpawn(){
-
     let bx = W/2, by = H/2, bestScore = -1;
     for(let attempt=0; attempt<300; attempt++){
-      const tx = Phaser.Math.Between(60, W-60);
-      const ty = Phaser.Math.Between(60, H-60);
-
+      const tx = _PB(60, W-60);
+      const ty = _PB(60, H-60);
       let minPlanetDist = 9999;
       for(const p of this.planets){
         const d = dist(tx,ty,p.x,p.y) - p.radius;
         if(d < minPlanetDist) minPlanetDist = d;
       }
-
       let minEnemyDist = 9999;
       for(const e of (this.enemies||[])){
         const d = dist(tx,ty,e.x,e.y);
         if(d < minEnemyDist) minEnemyDist = d;
       }
-
       if(minPlanetDist < 70) continue;
-
-      const score = Math.min(minPlanetDist, 300) + Math.min(minEnemyDist, 300)*0.8;
+      const score = _MN(minPlanetDist, 300) + _MN(minEnemyDist, 300)*0.8;
       if(score > bestScore){
         bestScore = score;
         bx = tx; by = ty;
-
         if(minPlanetDist > 120 && minEnemyDist > 200) break;
       }
     }
     return {x: bx, y: by};
   }
-
   createShip(){
     this.ship = {
       x: W/2, y: H/2,
@@ -1498,13 +1215,11 @@ class GameScene extends Phaser.Scene {
     };
     this.shipGfx = this.add.graphics().setDepth(10);
     this.thrustGfx = this.add.graphics().setDepth(9);
-
     const spawn = this.findSafeSpawn();
     this.ship.x = spawn.x;
     this.ship.y = spawn.y;
     this.drawShip();
   }
-
   drawShip(){
     const {x,y,angle,health} = this.ship;
     const sg = this.shipGfx;
@@ -1512,24 +1227,18 @@ class GameScene extends Phaser.Scene {
     sg.save();
     sg.translateCanvas(x,y);
     sg.rotateCanvas(angle);
-
     const col = health>50?0x00ccff:health>25?0xffaa00:0xff4400;
     sg.fillStyle(col,1);
     sg.fillTriangle(14,0,-8,-6,-8,6);
     sg.lineStyle(1,0xffffff,0.5);
     sg.strokeTriangle(14,0,-8,-6,-8,6);
-
     sg.fillStyle(0x99eeff,0.9);
     sg.fillCircle(4,0,4);
-
     sg.fillStyle(col,0.7);
     sg.fillTriangle(-2,-6,-10,-12,-10,0);
     sg.fillTriangle(-2,6,-10,12,-10,0);
-
-
     const wlv = this.upgrades.weapon||0;
     if(wlv>=1){
-
       sg.fillStyle(0xffdd00,1);
       sg.fillRect(12,-1, 8, 2);
       if(wlv>=2){
@@ -1543,7 +1252,6 @@ class GameScene extends Phaser.Scene {
     }
     sg.restore();
   }
-
   drawThrust(){
     const tg = this.thrustGfx;
     tg.clear();
@@ -1552,15 +1260,13 @@ class GameScene extends Phaser.Scene {
     tg.save();
     tg.translateCanvas(x,y);
     tg.rotateCanvas(angle);
-    tg.fillStyle(0xff6600, Phaser.Math.FloatBetween(0.5,1));
+    tg.fillStyle(0xff6600, _PF(0.5,1));
     tg.fillTriangle(-8,0,-18,-4,-18,4);
     tg.fillStyle(0xffff00,0.6);
     tg.fillTriangle(-8,0,-14,-2,-14,2);
     tg.restore();
   }
-
   createInput(){
-    // Standard keyboard controls
     this.keys = this.input.keyboard.addKeys({
       up:    Phaser.Input.Keyboard.KeyCodes.UP,
       down:  Phaser.Input.Keyboard.KeyCodes.DOWN,
@@ -1573,8 +1279,6 @@ class GameScene extends Phaser.Scene {
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
       fire:  Phaser.Input.Keyboard.KeyCodes.K,
     });
-
-    // Arcade cabinet key tracking (P1U/P1D/P1L/P1R = joystick, P1A-P1Z = buttons)
     this._arcade = { up:false, down:false, left:false, right:false, fire:false, brake:false };
     const arcadeMap = {
       'P1U':'up', 'P1D':'down', 'P1L':'left', 'P1R':'right',
@@ -1587,12 +1291,10 @@ class GameScene extends Phaser.Scene {
     this.input.keyboard.on('keyup', e => {
       if(arcadeMap[e.key]) this._arcade[arcadeMap[e.key]] = false;
     });
-
     this.fireTimer = 0;
     this.input.on('pointerdown', ()=>{ this._clickFire = true; });
     this.input.on('pointerup',   ()=>{ this._clickFire = false; });
   }
-
   createUI(){
     if(this.uiGfx) this.uiGfx.destroy();
     if(this.uiTexts) this.uiTexts.forEach(t=>t.destroy());
@@ -1601,21 +1303,13 @@ class GameScene extends Phaser.Scene {
     if(this.upgradeIcons) Object.values(this.upgradeIcons).forEach(ic=>{ ic.ico.destroy(); ic.lbl.destroy(); if(ic.stars) ic.stars.destroy(); });
     if(this.barLabels){ this.barLabels.forEach(l=>l.destroy()); this.barLabels=null; }
     if(this._barVals){ this._barVals.forEach(l=>l.destroy()); this._barVals=null; }
-
     this.uiGfx = this.add.graphics().setDepth(20);
     this.uiTexts = [];
-
-    // Top-left: score, sector, towers
-    this.scoreText  = this.add.text(10, 10, 'SCORE: 0',   {fontSize:'12px',fontFamily:'Courier New',color:'#aaddff'}).setDepth(20);
-    this.sectorText = this.add.text(10, 26, 'SECTOR: 1',  {fontSize:'12px',fontFamily:'Courier New',color:'#aaddff'}).setDepth(20);
-    this.towersText = this.add.text(10, 42, 'TOWERS: 0/0',{fontSize:'12px',fontFamily:'Courier New',color:'#ffff88'}).setDepth(20);
-
-    // Bottom-center: messages
-    this.msgText = this.add.text(W/2, H-22, '', {fontSize:'13px',fontFamily:'Courier New',color:'#ffff00',stroke:'#333300',strokeThickness:2}).setOrigin(0.5).setDepth(20);
-
+    this.scoreText  = this.add.text(10, 10, 'SCORE: 0',   {fontSize:'12px',fontFamily:_FF,color:'#aaddff'}).setDepth(20);
+    this.sectorText = this.add.text(10, 26, 'SECTOR: 1',  {fontSize:'12px',fontFamily:_FF,color:'#aaddff'}).setDepth(20);
+    this.towersText = this.add.text(10, 42, 'TOWERS: 0/0',{fontSize:'12px',fontFamily:_FF,color:'#ffff88'}).setDepth(20);
+    this.msgText = this.add.text(W/2, H-22, '', {fontSize:'13px',fontFamily:_FF,color:'#ffff00',stroke:'#333300',strokeThickness:2}).setOrigin(0.5).setDepth(20);
     this.uiTexts = [this.scoreText, this.sectorText, this.towersText, this.msgText];
-
-    // Bottom-right: upgrade modules panel (weapon + extraTank only)
     this.upgradePanel = this.add.graphics().setDepth(20);
     this.upgradeIcons = {};
     const upgDefs = [
@@ -1623,32 +1317,24 @@ class GameScene extends Phaser.Scene {
       { key:'extraTank', icon:'⛽', label:'TANK', color:'#ff8800' },
     ];
     this._upgDefs = upgDefs;
-
-    // Panel title
     this._panelTitle = this.add.text(W-8, H-86, 'MODULES', {
-      fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:2
+      fontSize:'8px', fontFamily:_FF, color:'#334455', letterSpacing:2
     }).setOrigin(1, 0.5).setDepth(22);
-
     upgDefs.forEach((u, i) => {
-      const ux = W - 90 + i * 46;  // two slots side by side, bottom-right
+      const ux = W - 90 + i * 46;
       const uy = H - 60;
       const ico   = this.add.text(ux, uy,    u.icon,  {fontSize:'18px'}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
-      const lbl   = this.add.text(ux, uy+16, u.label, {fontSize:'7px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
-      const stars = this.add.text(ux, uy-14, '○○○',   {fontSize:'8px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
+      const lbl   = this.add.text(ux, uy+16, u.label, {fontSize:'7px',fontFamily:_FF,color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
+      const stars = this.add.text(ux, uy-14, '○○○',   {fontSize:'8px',fontFamily:_FF,color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
       this.upgradeIcons[u.key] = {ico, lbl, stars, color:u.color, ux, uy};
     });
   }
-
   updateUI(){
     const s = this.ship;
     const g = this.uiGfx;
     g.clear();
-
-    // ── Bottom-left resource bars ──────────────────────────────
-    // Layout: icon | bar | value, stacked vertically
     const bx = 10, bw = 100, bh = 7, gap = 14;
     const maxFuel = 100 + (this.upgrades.extraTank||0)*15;
-
     const bars = [
       { label:'FUEL', val:s.fuel,   max:maxFuel, fill:0xffaa00, bg:0x332200, border:0x664400 },
       { label:'ENRG', val:s.energy, max:100,     fill:0x00ddff, bg:0x002233, border:0x005566 },
@@ -1656,65 +1342,50 @@ class GameScene extends Phaser.Scene {
         fill: s.health>50 ? 0x00ff44 : s.health>25 ? 0xffaa00 : 0xff3300,
         bg:0x220000, border:0x550000 },
     ];
-
-    // Semi-transparent backing for bar area
     g.fillStyle(0x000000, 0.45);
     g.fillRoundedRect(bx-4, H-66, bw+70, 58, 4);
-
     bars.forEach((b, i) => {
       const by = H - 58 + i * gap;
-      const ratio = Math.min(1, b.val / b.max);
+      const ratio = _MN(1, b.val / b.max);
       g.fillStyle(b.bg, 1);    g.fillRect(bx+28, by, bw, bh);
       g.fillStyle(b.fill, 1);  g.fillRect(bx+28, by, bw*ratio, bh);
       g.lineStyle(1, b.border, 1); g.strokeRect(bx+28, by, bw, bh);
     });
-
     this.scoreText.setText(`SCORE: ${this.score}`);
     this.sectorText.setText(`SECTOR: ${this.sector}`);
     this.towersText.setText(`TOWERS: ${this.activeTowers}/${this.towers.length}`);
-
     if(!this.barLabels){
       this.barLabels = [
-        this.add.text(bx, H-59, 'FUEL', {fontSize:'7px',fontFamily:'Courier New',color:'#ffaa00'}).setDepth(21),
-        this.add.text(bx, H-59+gap, 'ENRG', {fontSize:'7px',fontFamily:'Courier New',color:'#00ddff'}).setDepth(21),
-        this.add.text(bx, H-59+gap*2, 'HP', {fontSize:'7px',fontFamily:'Courier New',color:'#00ff44'}).setDepth(21),
+        this.add.text(bx, H-59, 'FUEL', {fontSize:'7px',fontFamily:_FF,color:'#ffaa00'}).setDepth(21),
+        this.add.text(bx, H-59+gap, 'ENRG', {fontSize:'7px',fontFamily:_FF,color:'#00ddff'}).setDepth(21),
+        this.add.text(bx, H-59+gap*2, 'HP', {fontSize:'7px',fontFamily:_FF,color:'#00ff44'}).setDepth(21),
       ];
-      // numeric values as dynamic texts
       this._barVals = [
-        this.add.text(bx+132, H-59,       '', {fontSize:'7px',fontFamily:'Courier New',color:'#ffaa00'}).setDepth(21),
-        this.add.text(bx+132, H-59+gap,   '', {fontSize:'7px',fontFamily:'Courier New',color:'#00ddff'}).setDepth(21),
-        this.add.text(bx+132, H-59+gap*2, '', {fontSize:'7px',fontFamily:'Courier New',color:'#00ff44'}).setDepth(21),
+        this.add.text(bx+132, H-59,       '', {fontSize:'7px',fontFamily:_FF,color:'#ffaa00'}).setDepth(21),
+        this.add.text(bx+132, H-59+gap,   '', {fontSize:'7px',fontFamily:_FF,color:'#00ddff'}).setDepth(21),
+        this.add.text(bx+132, H-59+gap*2, '', {fontSize:'7px',fontFamily:_FF,color:'#00ff44'}).setDepth(21),
       ];
     }
-    // Update numeric values
     if(this._barVals){
       this._barVals[0].setText(Math.ceil(s.fuel)+'/'+maxFuel);
       this._barVals[1].setText(Math.ceil(s.energy)+'/100');
       this._barVals[2].setText(Math.ceil(s.health)+'/100');
     }
-
-    // ── Bottom-right upgrade panel ─────────────────────────────
     const pg = this.upgradePanel;
     pg.clear();
     const hasAny = (this.upgrades.weapon||0)+(this.upgrades.extraTank||0) > 0;
-
-    // Panel backing
     pg.fillStyle(0x000000, 0.45);
     pg.fillRoundedRect(W-110, H-80, 104, 72, 4);
     pg.lineStyle(1, 0x223344, 0.8);
     pg.strokeRoundedRect(W-110, H-80, 104, 72, 4);
-
     this._upgDefs.forEach(u => {
       const lvl = this.upgrades[u.key] || 0;
       const ic  = this.upgradeIcons[u.key];
       const alpha = lvl > 0 ? 1 : 0.22;
       ic.ico.setAlpha(alpha);
       ic.lbl.setAlpha(alpha);
-
-      // Stars: filled vs empty
       const starStr = '●'.repeat(lvl) + '○'.repeat(3-lvl);
       ic.stars.setText(starStr).setAlpha(alpha);
-
       const hx = parseInt(u.color.replace('#','0x'));
       if(lvl > 0){
         pg.lineStyle(1, hx, 0.5);
@@ -1722,7 +1393,6 @@ class GameScene extends Phaser.Scene {
       }
     });
   }
-
   startTutorial(){
     if(this.sector!==1) return;
     const msgs = [
@@ -1740,13 +1410,11 @@ class GameScene extends Phaser.Scene {
       });
     });
   }
-
   showMsg(txt, duration=2000){
     this.msgText.setText(txt);
     if(this._msgTimer) clearTimeout(this._msgTimer);
     this._msgTimer = setTimeout(()=>this.msgText.setText(''), duration);
   }
-
   showUpgradePopup(type, level=1){
     const names = {weapon:'ARMAMENT', extraTank:'EXTRA TANK', health:'HEALTH'};
     const stars = '★'.repeat(level)+'☆'.repeat(3-level);
@@ -1758,7 +1426,6 @@ class GameScene extends Phaser.Scene {
     }
     this.score += 50;
   }
-
   update(time, delta){
     if(this.sectorTransition) return;
     const dt = delta/1000;
@@ -1772,9 +1439,8 @@ class GameScene extends Phaser.Scene {
     this.updateUI();
     this.drawShip();
     this.drawThrust();
-    this.fireTimer = Math.max(0, this.fireTimer-dt);
+    this.fireTimer = _MX(0, this.fireTimer-dt);
   }
-
   updateShip(dt){
     const s = this.ship;
     const k = this.keys;
@@ -1795,122 +1461,101 @@ class GameScene extends Phaser.Scene {
     } else {
       if(this._fuelEmptyTimer){ this._fuelEmptyTimer=0; this.msgText.setColor('#ffff00'); }
     }
-
     const thrustPressed = k.up.isDown||k.w.isDown||this._arcade.up;
     const rotLeft  = k.left.isDown||k.a.isDown||this._arcade.left;
     const rotRight = k.right.isDown||k.d.isDown||this._arcade.right;
     const braking  = (k.space.isDown||this._arcade.brake) && !s.landed;
-
     if(s.landed && thrustPressed && s.fuel>0){
       const p = s.landedPlanet;
       s.landed = false;
       s.landedPlanet = null;
       s.vx = 0;
       s.vy = 0;
-
       if(p){
         const ang = angleTo(p.x, p.y, s.x, s.y);
-        s.x = p.x + Math.cos(ang) * (p.radius + 20);
-        s.y = p.y + Math.sin(ang) * (p.radius + 20);
-
+        s.x = p.x + _C(ang) * (p.radius + 20);
+        s.y = p.y + _S(ang) * (p.radius + 20);
         s.angle = ang;
       }
       this.landingTimer = 0;
       this.landingTower = null;
     }
-
     const thrusting = thrustPressed && !s.landed;
     s.thrusting = thrusting;
-
-    // Engine SFX
     if(thrusting && s.fuel>0 && !this._engineOn){ this._engineOn=true; SFX.startEngine(); }
     if((!thrusting || s.fuel<=0) && this._engineOn){ this._engineOn=false; SFX.stopEngine(); }
-
     if(!s.landed){
       if(rotLeft) s.angle -= dt*2.5;
       if(rotRight) s.angle += dt*2.5;
     }
-
     const enginePower = 180;
-
     if(thrusting && s.fuel>0){
-      s.vx += Math.cos(s.angle)*enginePower*dt;
-      s.vy += Math.sin(s.angle)*enginePower*dt;
-      s.fuel = Math.max(0, s.fuel - dt*8);
+      s.vx += _C(s.angle)*enginePower*dt;
+      s.vy += _S(s.angle)*enginePower*dt;
+      s.fuel = _MX(0, s.fuel - dt*8);
     }
-
     if(braking){
       s.vx *= (1 - dt*3);
       s.vy *= (1 - dt*3);
-      s.fuel = Math.max(0, s.fuel - dt*4);
+      s.fuel = _MX(0, s.fuel - dt*4);
       if(!this._brakeSound){ this._brakeSound=true; SFX.brake(); }
     } else { this._brakeSound=false; }
-
     if(!s.landed){
       for(const p of this.planets){
         const d = dist(s.x,s.y,p.x,p.y);
         if(d<p.gravRadius){
           const force = p.gravity * (1 - d/p.gravRadius);
           const angle = angleTo(s.x,s.y,p.x,p.y);
-          s.vx += Math.cos(angle)*force*dt;
-          s.vy += Math.sin(angle)*force*dt;
+          s.vx += _C(angle)*force*dt;
+          s.vy += _S(angle)*force*dt;
         }
       }
     }
-
     if(!s.landed){
       s.x += s.vx*dt;
       s.y += s.vy*dt;
-
       if(s.x<-20) s.x=W+20;
       if(s.x>W+20) s.x=-20;
       if(s.y<-20) s.y=H+20;
       if(s.y>H+20) s.y=-20;
     }
-
     let onPlanet = false;
     for(const p of this.planets){
       const d = dist(s.x,s.y,p.x,p.y);
       const landDist = p.radius + 12;
       if(d<=landDist+5){
-        const speed = Math.sqrt(s.vx**2+s.vy**2);
+        const speed = _SQ(s.vx**2+s.vy**2);
         if(speed>80){
-
           let cdmg = (speed-80)*0.3 * dt * 60;
-          s.health = Math.max(0, s.health - cdmg);
+          s.health = _MX(0, s.health - cdmg);
           const dmg = cdmg;
-
           const norm = angleTo(p.x,p.y,s.x,s.y);
-          s.vx = Math.cos(norm)*speed*0.3;
-          s.vy = Math.sin(norm)*speed*0.3;
+          s.vx = _C(norm)*speed*0.3;
+          s.vy = _S(norm)*speed*0.3;
         } else {
-
           onPlanet = true;
           if(!s.landed) SFX.land();
           s.landed = true;
           s.landedPlanet = p;
           s.vx = 0; s.vy = 0;
-
           const ang = angleTo(p.x,p.y,s.x,s.y);
-          s.x = p.x + Math.cos(ang)*landDist;
-          s.y = p.y + Math.sin(ang)*landDist;
+          s.x = p.x + _C(ang)*landDist;
+          s.y = p.y + _S(ang)*landDist;
           s.angle = ang;
-
           if(p.hasResources && p.resourceAmt>0 && dt>0){
-            const absorb = Math.min(p.resourceAmt, dt*15);
+            const absorb = _MN(p.resourceAmt, dt*15);
             p.resourceAmt -= absorb;
             const maxFuelP = 100 + this.upgrades.extraTank*15;
-            if(p.resourceType==='fuel') s.fuel = Math.min(maxFuelP, s.fuel+absorb);
-            if(p.resourceType==='energy') s.energy = Math.min(100, s.energy+absorb);
-            if(p.resourceType==='health') s.health = Math.min(100, s.health+absorb);
+            if(p.resourceType==='fuel') s.fuel = _MN(maxFuelP, s.fuel+absorb);
+            if(p.resourceType==='energy') s.energy = _MN(100, s.energy+absorb);
+            if(p.resourceType==='health') s.health = _MN(100, s.health+absorb);
             if(p.resourceAmt<=0){ p.ring&&p.ring.clear(); p.label.setText(''); }
           }
-
           if(this.fuelDepots){
             for(const fd of this.fuelDepots){
               if(!fd.collected && dist(s.x,s.y,fd.x,fd.y)<28){
                 const maxFuel = 100 + this.upgrades.extraTank*15;
-                s.fuel = Math.min(maxFuel, s.fuel + fd.amount);
+                s.fuel = _MN(maxFuel, s.fuel + fd.amount);
                 fd.collected = true;
                 fd.gfx.clear();
                 fd.label.setText('');
@@ -1920,17 +1565,15 @@ class GameScene extends Phaser.Scene {
               }
             }
           }
-
           for(const w of this.wrecks){
             if(!w.collected && dist(s.x,s.y,w.x,w.y)<30){
               SFX.collectItem();
               if(w.type==='health'){
-                // consumable: just restore HP
-                this.ship.health = Math.min(100, this.ship.health + 30);
+                this.ship.health = _MN(100, this.ship.health + 30);
                 this.showMsg('🔧 +30 HEALTH RESTORED', 2000);
                 this.score += 30;
               } else {
-                this.upgrades[w.type] = Math.min(3, (this.upgrades[w.type]||0)+1);
+                this.upgrades[w.type] = _MN(3, (this.upgrades[w.type]||0)+1);
                 this.showUpgradePopup(w.type, this.upgrades[w.type]);
                 this.score += 50;
               }
@@ -1948,7 +1591,6 @@ class GameScene extends Phaser.Scene {
       this.landingTimer = 0;
       this.landingTower = null;
     }
-
     if(this.portalActive && this.portalGfx){
       const pd = dist(s.x,s.y,this.portalX,this.portalY);
       if(pd<35){
@@ -1956,19 +1598,17 @@ class GameScene extends Phaser.Scene {
         return;
       }
     }
-
     const wlvl = this.upgrades.weapon;
     const fireRate = wlvl>=3 ? 0.12 : wlvl>=2 ? 0.20 : 0.30;
     const energyCost = wlvl>=3 ? 4 : wlvl>=2 ? 3 : 2;
     if(wlvl>0 && (k.fire.isDown||this._arcade.fire) && this.fireTimer<=0){
       if(s.energy>=energyCost){
-        s.energy = Math.max(0, s.energy - energyCost);
+        s.energy = _MX(0, s.energy - energyCost);
         this.fireBullet();
         if(wlvl>=2) this.fireBullet(0.18);
         if(wlvl>=3) this.fireBullet(-0.18);
         this.fireTimer = fireRate;
       } else {
-
         if(!this._noEnergyFlash || this._noEnergyFlash<=0){
           this.showMsg('⚡ NOT ENOUGH ENERGY TO SHOOT', 1200);
           this._noEnergyFlash = 1.5;
@@ -1977,7 +1617,6 @@ class GameScene extends Phaser.Scene {
     }
     if(this._noEnergyFlash>0) this._noEnergyFlash -= dt;
   }
-
   fireBullet(spread=0){
     const s = this.ship;
     const wlvl = this.upgrades.weapon;
@@ -1991,9 +1630,8 @@ class GameScene extends Phaser.Scene {
     g.fillStyle(0xffffff,0.4); g.fillCircle(0,0,bsize*0.5);
     g.x = s.x; g.y = s.y;
     const dmg = wlvl>=3 ? 1.5 : wlvl>=2 ? 1 : 0.5;
-    this.bullets.push({ x:s.x, y:s.y, vx:Math.cos(a)*speed+s.vx, vy:Math.sin(a)*speed+s.vy, gfx:g, life:2, dmg });
+    this.bullets.push({ x:s.x, y:s.y, vx:_C(a)*speed+s.vx, vy:_S(a)*speed+s.vy, gfx:g, life:2, dmg });
   }
-
   updateBullets(dt){
     for(let i=this.bullets.length-1;i>=0;i--){
       const b = this.bullets[i];
@@ -2002,7 +1640,6 @@ class GameScene extends Phaser.Scene {
       if(b.life<=0 || b.x<0||b.x>W||b.y<0||b.y>H){
         b.gfx.destroy(); this.bullets.splice(i,1); continue;
       }
-
       let bulletHitPlanet = false;
       for(const p of this.planets){
         if(dist(b.x,b.y,p.x,p.y)<p.radius+2){
@@ -2011,12 +1648,10 @@ class GameScene extends Phaser.Scene {
         }
       }
       if(bulletHitPlanet) continue;
-
       for(let j=this.enemies.length-1;j>=0;j--){
         const e = this.enemies[j];
         if(dist(b.x,b.y,e.x,e.y)<14){
           e.hp -= b.dmg||1;
-
           e.alerted = true;
           e.alertTimer = 6 + Math.random()*4;
           e.lastKnownX = this.ship.x;
@@ -2031,11 +1666,10 @@ class GameScene extends Phaser.Scene {
           break;
         }
       }
-      // Check bullet vs planet turrets
       if(!this.bullets[i]) continue;
       for(let j=this.planetTurrets.length-1;j>=0;j--){
         const t = this.planetTurrets[j];
-        const tx = t.bx+Math.cos(t.angle)*8, ty = t.by+Math.sin(t.angle)*8;
+        const tx = t.bx+_C(t.angle)*8, ty = t.by+_S(t.angle)*8;
         if(dist(b.x,b.y,tx,ty)<12){
           t.hp -= b.dmg||1;
           b.gfx.destroy(); this.bullets.splice(i,1);
@@ -2048,7 +1682,6 @@ class GameScene extends Phaser.Scene {
         }
       }
     }
-
     for(let i=this.enemyBullets.length-1;i>=0;i--){
       const b = this.enemyBullets[i];
       b.x += b.vx*dt; b.y += b.vy*dt; b.life -= dt;
@@ -2056,7 +1689,6 @@ class GameScene extends Phaser.Scene {
       if(b.life<=0 || b.x<0||b.x>W||b.y<0||b.y>H){
         b.gfx.destroy(); this.enemyBullets.splice(i,1); continue;
       }
-
       let eHitPlanet=false;
       for(const p of this.planets){
         if(dist(b.x,b.y,p.x,p.y)<p.radius+2){
@@ -2068,25 +1700,22 @@ class GameScene extends Phaser.Scene {
       if(dist(b.x,b.y,this.ship.x,this.ship.y)<12){
         let dmg = 10;
         SFX.damage();
-        this.ship.health = Math.max(0, this.ship.health-dmg);
+        this.ship.health = _MX(0, this.ship.health-dmg);
         b.gfx.destroy(); this.enemyBullets.splice(i,1);
       }
     }
   }
-
   drawAsteroid(a){
     a.gfx.clear();
     a.gfx.x = a.x; a.gfx.y = a.y;
     const r = a.radius;
-
-    const pts = 7 + Math.floor(r/3);
+    const pts = 7 + _MF(r/3);
     const verts = [];
     for(let i=0;i<pts;i++){
       const ang = (i/pts)*Math.PI*2 + a.rot;
-      const jag = 0.65 + 0.35*Math.abs(Math.sin(i*2.3+a.rot*0.5));
-      verts.push({ x: Math.cos(ang)*r*jag, y: Math.sin(ang)*r*jag });
+      const jag = 0.65 + 0.35*Math.abs(_S(i*2.3+a.rot*0.5));
+      verts.push({ x: _C(ang)*r*jag, y: _S(ang)*r*jag });
     }
-
     const grey = 0x556677;
     a.gfx.fillStyle(grey, 1);
     a.gfx.beginPath();
@@ -2094,66 +1723,53 @@ class GameScene extends Phaser.Scene {
     for(let i=1;i<verts.length;i++) a.gfx.lineTo(verts[i].x, verts[i].y);
     a.gfx.closePath();
     a.gfx.fillPath();
-
     a.gfx.lineStyle(1, 0x8899aa, 0.7);
     a.gfx.beginPath();
     a.gfx.moveTo(verts[0].x, verts[0].y);
     for(let i=1;i<verts.length;i++) a.gfx.lineTo(verts[i].x, verts[i].y);
     a.gfx.closePath();
     a.gfx.strokePath();
-
     a.gfx.lineStyle(1, 0x334455, 0.5);
     a.gfx.lineBetween(-r*0.3, -r*0.1, r*0.1, r*0.3);
   }
-
   spawnAsteroid(){
     const s = this.sector;
-    // Spawn from a random edge of the screen
     let ax, ay;
-    const edge = Math.floor(Math.random()*4);
-    if(edge===0){ ax=Phaser.Math.Between(0,W); ay=-20; }
-    else if(edge===1){ ax=W+20; ay=Phaser.Math.Between(0,H); }
-    else if(edge===2){ ax=Phaser.Math.Between(0,W); ay=H+20; }
-    else { ax=-20; ay=Phaser.Math.Between(0,H); }
-
+    const edge = _MF(Math.random()*4);
+    if(edge===0){ ax=_PB(0,W); ay=-20; }
+    else if(edge===1){ ax=W+20; ay=_PB(0,H); }
+    else if(edge===2){ ax=_PB(0,W); ay=H+20; }
+    else { ax=-20; ay=_PB(0,H); }
     const minR = s>=5 ? 6 : 4;
     const maxR = s>=7 ? 22 : s>=4 ? 16 : 10;
-    const radius = Phaser.Math.Between(minR, maxR);
-    const speed  = Phaser.Math.FloatBetween(14, 32+s*2.76);
-    // Aim roughly toward screen center with some spread
-    const baseAngle = angleTo(ax, ay, W/2+Phaser.Math.Between(-150,150), H/2+Phaser.Math.Between(-150,150));
-    const spin = Phaser.Math.FloatBetween(-1.5,1.5);
+    const radius = _PB(minR, maxR);
+    const speed  = _PF(14, 32+s*2.76);
+    const baseAngle = angleTo(ax, ay, W/2+_PB(-150,150), H/2+_PB(-150,150));
+    const spin = _PF(-1.5,1.5);
     const g = this.add.graphics().setDepth(3);
-    const ast = {x:ax, y:ay, vx:Math.cos(baseAngle)*speed, vy:Math.sin(baseAngle)*speed, radius, spin, rot:0, gfx:g, hp:Math.ceil(radius/4)};
+    const ast = {x:ax, y:ay, vx:_C(baseAngle)*speed, vy:_S(baseAngle)*speed, radius, spin, rot:0, gfx:g, hp:Math.ceil(radius/4)};
     this.drawAsteroid(ast);
     this.asteroids.push(ast);
   }
-
   updateAsteroids(dt){
     const s = this.sector;
-    const targetCount = 3 + Math.floor(s*1.1);
-
-    // Respawn timer — trickle in new asteroids to replace destroyed ones
+    const targetCount = 3 + _MF(s*1.1);
     this._astRespawnTimer = (this._astRespawnTimer||0) - dt;
     if(this._astRespawnTimer<=0 && this.asteroids.length < targetCount){
       this.spawnAsteroid();
-      this._astRespawnTimer = 2.5; // new one every 2.5s when below target
+      this._astRespawnTimer = 2.5;
     }
-
     for(let i=this.asteroids.length-1;i>=0;i--){
       const a = this.asteroids[i];
       let destroyed = false;
-
       for(const p of this.planets){
         const dp = dist(a.x,a.y,p.x,p.y);
-        // Gravity pull
         if(dp < p.gravRadius){
           const ag = angleTo(a.x,a.y,p.x,p.y);
           const force = p.gravity*(1-dp/p.gravRadius);
-          a.vx += Math.cos(ag)*force*0.3*dt;
-          a.vy += Math.sin(ag)*force*0.3*dt;
+          a.vx += _C(ag)*force*0.3*dt;
+          a.vy += _S(ag)*force*0.3*dt;
         }
-        // Crash into planet — destroy asteroid
         if(dp < p.radius + a.radius){
           a.gfx.destroy();
           this.asteroids.splice(i,1);
@@ -2162,50 +1778,42 @@ class GameScene extends Phaser.Scene {
         }
       }
       if(destroyed) continue;
-
-      const aspd = Math.sqrt(a.vx**2+a.vy**2);
+      const aspd = _SQ(a.vx**2+a.vy**2);
       const maxAspd = 80;
       if(aspd>maxAspd){ a.vx=(a.vx/aspd)*maxAspd; a.vy=(a.vy/aspd)*maxAspd; }
-
       a.rot += a.spin*dt;
       a.x += a.vx*dt; a.y += a.vy*dt;
-
       if(a.x<-30) a.x=W+30; else if(a.x>W+30) a.x=-30;
       if(a.y<-30) a.y=H+30; else if(a.y>H+30) a.y=-30;
       this.drawAsteroid(a);
-
       const ds = dist(a.x,a.y,this.ship.x,this.ship.y);
       if(ds < a.radius+10 && !this.ship.landed){
-        const impactSpd = Math.sqrt((a.vx-this.ship.vx)**2+(a.vy-this.ship.vy)**2);
+        const impactSpd = _SQ((a.vx-this.ship.vx)**2+(a.vy-this.ship.vy)**2);
         if(impactSpd>20){
           let dmg = impactSpd*0.012*a.radius*0.12;
-          this.ship.health = Math.max(0, this.ship.health-dmg);
-
+          this.ship.health = _MX(0, this.ship.health-dmg);
           const ba = angleTo(a.x,a.y,this.ship.x,this.ship.y);
-          this.ship.vx += Math.cos(ba)*impactSpd*0.4;
-          this.ship.vy += Math.sin(ba)*impactSpd*0.4;
+          this.ship.vx += _C(ba)*impactSpd*0.4;
+          this.ship.vy += _S(ba)*impactSpd*0.4;
         }
-
         a.hp -= 0.5;
       }
-
       for(let bi=this.bullets.length-1;bi>=0;bi--){
         const b = this.bullets[bi];
         if(dist(b.x,b.y,a.x,a.y)<a.radius+3){
           a.hp -= b.dmg||1;
           b.gfx.destroy(); this.bullets.splice(bi,1);
           if(a.hp<=0){
-
             if(a.radius>8){
               for(let si=0;si<2;si++){
                 const sa = Math.random()*Math.PI*2;
                 const sg2 = this.add.graphics().setDepth(3);
                 const frag = {
-                  x:a.x+Math.cos(sa)*a.radius*0.5,
-                  y:a.y+Math.sin(sa)*a.radius*0.5,
-                  vx:a.vx+Math.cos(sa)*25, vy:a.vy+Math.sin(sa)*25,
-                  radius:Math.floor(a.radius*0.55),
-                  spin:Phaser.Math.FloatBetween(-2,2), rot:0,
+                  x:a.x+_C(sa)*a.radius*0.5,
+                  y:a.y+_S(sa)*a.radius*0.5,
+                  vx:a.vx+_C(sa)*25, vy:a.vy+_S(sa)*25,
+                  radius:_MF(a.radius*0.55),
+                  spin:_PF(-2,2), rot:0,
                   gfx:sg2, hp:1
                 };
                 this.drawAsteroid(frag);
@@ -2221,18 +1829,14 @@ class GameScene extends Phaser.Scene {
       }
     }
   }
-
   updateEnemies(dt, time){
     const maxSpd = 82 + this.sector*2.76;
-
     for(const e of this.enemies){
       const ds = dist(e.x,e.y,this.ship.x,this.ship.y);
-
       const canSee = hasLineOfSight(e.x,e.y,this.ship.x,this.ship.y,this.planets);
-
       if(canSee && ds<220){
         e.alerted = true;
-        e.alertTimer = Math.max(e.alertTimer||0, 0.5);
+        e.alertTimer = _MX(e.alertTimer||0, 0.5);
         e.lastKnownX = this.ship.x;
         e.lastKnownY = this.ship.y;
       }
@@ -2242,7 +1846,6 @@ class GameScene extends Phaser.Scene {
           e.alerted = false;
         }
       }
-
       let avoidX=0, avoidY=0;
       for(const p of this.planets){
         const dp = dist(e.x,e.y,p.x,p.y);
@@ -2250,27 +1853,23 @@ class GameScene extends Phaser.Scene {
         if(dp < avoidR){
           const strength = (1 - dp/avoidR) * 320;
           const ang = angleTo(p.x,p.y,e.x,e.y);
-          avoidX += Math.cos(ang)*strength;
-          avoidY += Math.sin(ang)*strength;
+          avoidX += _C(ang)*strength;
+          avoidY += _S(ang)*strength;
         }
       }
-
       let desiredVx=0, desiredVy=0;
       if(e.alerted){
-
         const targetX = canSee ? this.ship.x : e.lastKnownX;
         const targetY = canSee ? this.ship.y : e.lastKnownY;
         const a = angleTo(e.x,e.y,targetX,targetY);
         const dTarget = dist(e.x,e.y,targetX,targetY);
         const chaseSpd = 72 + this.sector*1.84;
-        desiredVx = Math.cos(a)*chaseSpd;
-        desiredVy = Math.sin(a)*chaseSpd;
+        desiredVx = _C(a)*chaseSpd;
+        desiredVy = _S(a)*chaseSpd;
         e.targetAngle = a;
         e.state = 'chase';
-
         if(canSee && ds<190){
           e.fireTimer -= dt;
-
           const fRate = e.type===3 ? 3.0 : e.type===2 ? 0.6 : e.type===1 ? 1.5 : 1.8 + Math.random()*1.0;
           if(e.fireTimer<=0){
             e.fireTimer = fRate;
@@ -2282,7 +1881,7 @@ class GameScene extends Phaser.Scene {
                 g2.fillStyle(0xcc44ff,1); g2.fillCircle(0,0,5);
                 g2.x=e.x; g2.y=e.y;
                 const sa=shootA+sp*0.28;
-                this.enemyBullets.push({x:e.x,y:e.y,vx:Math.cos(sa)*(bspd*0.65),vy:Math.sin(sa)*(bspd*0.65),gfx:g2,life:3});
+                this.enemyBullets.push({x:e.x,y:e.y,vx:_C(sa)*(bspd*0.65),vy:_S(sa)*(bspd*0.65),gfx:g2,life:3});
               }
             } else if(e.type===1){
               for(let sp=-1;sp<=1;sp+=2){
@@ -2290,22 +1889,21 @@ class GameScene extends Phaser.Scene {
                 g2.fillStyle(0xff8800,1); g2.fillCircle(0,0,3);
                 g2.x=e.x; g2.y=e.y;
                 const sa=shootA+sp*0.12;
-                this.enemyBullets.push({x:e.x,y:e.y,vx:Math.cos(sa)*bspd,vy:Math.sin(sa)*bspd,gfx:g2,life:2.2});
+                this.enemyBullets.push({x:e.x,y:e.y,vx:_C(sa)*bspd,vy:_S(sa)*bspd,gfx:g2,life:2.2});
               }
             } else if(e.type===2){
               const g2=this.add.graphics().setDepth(8);
               g2.fillStyle(0x00ffcc,1); g2.fillCircle(0,0,2);
               g2.x=e.x; g2.y=e.y;
-              this.enemyBullets.push({x:e.x,y:e.y,vx:Math.cos(shootA)*(bspd*1.3),vy:Math.sin(shootA)*(bspd*1.3),gfx:g2,life:1.8});
+              this.enemyBullets.push({x:e.x,y:e.y,vx:_C(shootA)*(bspd*1.3),vy:_S(shootA)*(bspd*1.3),gfx:g2,life:1.8});
             } else {
               const g2=this.add.graphics().setDepth(8);
               g2.fillStyle(0xff4400,1); g2.fillCircle(0,0,3);
               g2.x=e.x; g2.y=e.y;
-              this.enemyBullets.push({x:e.x,y:e.y,vx:Math.cos(shootA)*bspd,vy:Math.sin(shootA)*bspd,gfx:g2,life:2.5});
+              this.enemyBullets.push({x:e.x,y:e.y,vx:_C(shootA)*bspd,vy:_S(shootA)*bspd,gfx:g2,life:2.5});
             }
           }
         }
-
         if(!canSee && dTarget < 25){
           e.alerted = false;
           e.alertTimer = 0;
@@ -2313,53 +1911,44 @@ class GameScene extends Phaser.Scene {
       } else {
         e.state = 'patrol';
         if(!e.wanderAngle || Math.random()<dt*0.8) e.wanderAngle = Math.random()*Math.PI*2;
-        desiredVx = Math.cos(e.wanderAngle)*35;
-        desiredVy = Math.sin(e.wanderAngle)*35;
+        desiredVx = _C(e.wanderAngle)*35;
+        desiredVy = _S(e.wanderAngle)*35;
         e.targetAngle = e.wanderAngle;
       }
-
       e.vx = lerp(e.vx, desiredVx + avoidX, dt*2.5);
       e.vy = lerp(e.vy, desiredVy + avoidY, dt*2.5);
-
       for(const p of this.planets){
         const dp = dist(e.x,e.y,p.x,p.y);
         if(dp < p.radius + 14){
           const na = angleTo(p.x,p.y,e.x,e.y);
-          e.vx = Math.cos(na)*60;
-          e.vy = Math.sin(na)*60;
-          e.x = p.x + Math.cos(na)*(p.radius+15);
-          e.y = p.y + Math.sin(na)*(p.radius+15);
+          e.vx = _C(na)*60;
+          e.vy = _S(na)*60;
+          e.x = p.x + _C(na)*(p.radius+15);
+          e.y = p.y + _S(na)*(p.radius+15);
         }
       }
-
-      const spd = Math.sqrt(e.vx**2+e.vy**2);
+      const spd = _SQ(e.vx**2+e.vy**2);
       if(spd>maxSpd){ e.vx=(e.vx/spd)*maxSpd; e.vy=(e.vy/spd)*maxSpd; }
-      if(spd>5) e.targetAngle = lerp(e.targetAngle, Math.atan2(e.vy,e.vx), dt*5);
-
+      if(spd>5) e.targetAngle = lerp(e.targetAngle, _A2(e.vy,e.vx), dt*5);
       e.x += e.vx*dt; e.y += e.vy*dt;
       if(e.x<-20) e.x=W+20; if(e.x>W+20) e.x=-20;
       if(e.y<-20) e.y=H+20; if(e.y>H+20) e.y=-20;
-
       this.drawEnemyShip(e.gfx, e.x, e.y, e.targetAngle, e.alerted, canSee, e.type||0, e.hp, e.maxHp);
-
       if(ds<15){
         let rdmg = 20*dt;
-        this.ship.health = Math.max(0, this.ship.health - rdmg);
+        this.ship.health = _MX(0, this.ship.health - rdmg);
       }
     }
   }
-
   updateTowers(dt){
     const s = this.ship;
     let nearTower = null;
     let minDist = 999;
-
     for(const t of this.towers){
       if(t.active) continue;
       const d = dist(s.x,s.y,t.x,t.y);
       if(d<minDist){ minDist=d; if(d<30) nearTower=t; }
     }
-
     if(s.landed && nearTower){
       if(this.landingTower !== nearTower){
         this.landingTower = nearTower;
@@ -2367,7 +1956,6 @@ class GameScene extends Phaser.Scene {
       }
       this.landingTimer += dt;
       nearTower.activationProgress = this.landingTimer/2;
-
       nearTower.timer.clear();
       const tbx = nearTower.tipX - 15;
       const tby = nearTower.tipY - 14;
@@ -2377,7 +1965,6 @@ class GameScene extends Phaser.Scene {
       nearTower.timer.fillRect(tbx, tby, 30*(this.landingTimer/2), 5);
       nearTower.timer.lineStyle(1,0x00aa44,1);
       nearTower.timer.strokeRect(tbx, tby, 30, 5);
-
       if(this.landingTimer>=2){
         this.activateTower(nearTower);
         this.landingTimer=0;
@@ -2391,29 +1978,26 @@ class GameScene extends Phaser.Scene {
         this.landingTower=null;
       }
     }
-
     for(const t of this.towers){
       const now = this.time.now;
       if(t.active){
-        // Activated: pulsing beam from tip outward + redraw
         t.beam.clear();
-        const pulse = 0.4+0.4*Math.sin(now/180);
-        const bLen = 30 + 10*Math.sin(now/220);
+        const pulse = 0.4+0.4*_S(now/180);
+        const bLen = 30 + 10*_S(now/220);
         t.beam.lineStyle(2, 0x00ffff, pulse);
         t.beam.lineBetween(
           t.tipX, t.tipY,
-          t.tipX + Math.cos(t.angle)*bLen,
-          t.tipY + Math.sin(t.angle)*bLen
+          t.tipX + _C(t.angle)*bLen,
+          t.tipY + _S(t.angle)*bLen
         );
         t.beam.lineStyle(1, 0x00ffcc, pulse*0.4);
         t.beam.strokeCircle(t.tipX, t.tipY, 6+4*pulse);
         this.drawTowerGfx(t);
       } else {
-        // Inactive: tick/blink animation on the bulb
         t.beam.clear();
-        const tickRate = 1200; // ms per full blink cycle
+        const tickRate = 1200;
         const phase = (now + t.tickPhase*1000) % tickRate;
-        const on = phase < tickRate*0.18; // short flash
+        const on = phase < tickRate*0.18;
         if(on){
           t.beam.fillStyle(0xffff00, 0.9);
           t.beam.fillCircle(t.tipX, t.tipY, 4);
@@ -2424,7 +2008,6 @@ class GameScene extends Phaser.Scene {
       }
     }
   }
-
   activateTower(t){
     t.active = true;
     t.timer.clear();
@@ -2440,15 +2023,13 @@ class GameScene extends Phaser.Scene {
       this.spawnPortal();
     }
   }
-
   spawnPortal(){
     this.portalActive = true;
     this.portalGfx = this.add.graphics().setDepth(7);
-
     let px, py, tries=0;
     do {
-      px = Phaser.Math.Between(60, W-60);
-      py = Phaser.Math.Between(60, H-60);
+      px = _PB(60, W-60);
+      py = _PB(60, H-60);
       tries++;
     } while(
       tries < 200 &&
@@ -2460,35 +2041,30 @@ class GameScene extends Phaser.Scene {
     this.showMsg('BLACK HOLE SPAWNED! Enter it.', 3000);
     this.score += 200;
   }
-
   updatePortal(dt){
     if(!this.portalActive || !this.portalGfx) return;
     const pg = this.portalGfx;
     pg.clear();
     const t = this.time.now/1000;
     const px=this.portalX, py=this.portalY;
-
     for(let r=35;r>0;r-=5){
       const a = (r/35)*0.15;
       pg.fillStyle(0x6600cc, a);
       pg.fillCircle(px,py,r);
     }
-
     for(let i=0;i<8;i++){
       const angle = (i/8)*Math.PI*2+t*2;
       const r1=8,r2=34;
       pg.lineStyle(1,0xaa44ff,0.6);
-      pg.lineBetween(px+Math.cos(angle)*r1,py+Math.sin(angle)*r1,
-                     px+Math.cos(angle+0.5)*r2,py+Math.sin(angle+0.5)*r2);
+      pg.lineBetween(px+_C(angle)*r1,py+_S(angle)*r1,
+                     px+_C(angle+0.5)*r2,py+_S(angle+0.5)*r2);
     }
     pg.fillStyle(0x000000,1);
     pg.fillCircle(px,py,10);
-
     if(!this.portalLabel){
-      this.portalLabel = this.add.text(this.portalX,this.portalY-45,'BLACK HOLE',{fontSize:'10px',fontFamily:'Courier New',color:'#aa44ff'}).setOrigin(0.5).setDepth(8);
+      this.portalLabel = this.add.text(this.portalX,this.portalY-45,'BLACK HOLE',{fontSize:'10px',fontFamily:_FF,color:'#aa44ff'}).setOrigin(0.5).setDepth(8);
     }
   }
-
   nextSector(){
     if(this.sectorTransition) return;
     this.sectorTransition = true;
@@ -2497,7 +2073,6 @@ class GameScene extends Phaser.Scene {
     SFX.portalEnter();
     SFX.stopMusic(1.2);
     if(this._engineOn){ this._engineOn=false; SFX.stopEngine(); }
-
     const flash = this.add.graphics().setDepth(50);
     flash.fillStyle(0xffffff,1); flash.fillRect(0,0,W,H);
     this.tweens.add({
@@ -2509,11 +2084,10 @@ class GameScene extends Phaser.Scene {
         this.generateSector();
         this.createUI();
         if(this.sector===1) this.startTutorial();
-
         const maxFuelSect = 100 + (this.upgrades.extraTank||0)*15;
-        this.ship.fuel = Math.min(maxFuelSect, this.ship.fuel+20);
-        this.ship.energy = Math.min(100, this.ship.energy+15);
-        this.ship.health = Math.min(100, this.ship.health+20);
+        this.ship.fuel = _MN(maxFuelSect, this.ship.fuel+20);
+        this.ship.energy = _MN(100, this.ship.energy+15);
+        this.ship.health = _MN(100, this.ship.health+20);
         const sp = this.findSafeSpawn();
         this.ship.x = sp.x; this.ship.y = sp.y;
         this.ship.vx = 0; this.ship.vy = 0;
@@ -2524,15 +2098,11 @@ class GameScene extends Phaser.Scene {
         SFX.sectorStart();
         SFX.startMusic();
         this.showMsg(`SECTOR ${this.sector} STARTED!`, 2500);
-
-        // ── Ship spawn beacon: expanding rings + arrow indicators ──
         this.spawnShipBeacon(sp.x, sp.y);
       }
     });
   }
-
   spawnShipBeacon(sx, sy){
-    // 1) Expanding rings at spawn point
     const rings = this.add.graphics().setDepth(30);
     let ringAge = 0;
     const ringEvent = this.time.addEvent({ delay: 16, loop: true, callback: ()=>{
@@ -2542,53 +2112,41 @@ class GameScene extends Phaser.Scene {
         const t = (ringAge*0.9 - i*0.25);
         if(t<0) continue;
         const r = t * 120;
-        const alpha = Math.max(0, 0.7 - t*0.9);
+        const alpha = _MX(0, 0.7 - t*0.9);
         rings.lineStyle(2, 0x00ffff, alpha);
         rings.strokeCircle(sx, sy, r);
       }
       if(ringAge > 3.5){ ringEvent.remove(); rings.destroy(); }
     }});
-
-    // 2) Corner arrows pointing toward ship for 4s
     const arrowGfx = this.add.graphics().setDepth(31);
     const arrowLabel = this.add.text(sx, sy-38, '◆ SHIP ◆', {
-      fontSize:'10px', fontFamily:'Courier New', color:'#00ffff', stroke:'#003333', strokeThickness:2
+      fontSize:'10px', fontFamily:_FF, color:'#00ffff', stroke:'#003333', strokeThickness:2
     }).setOrigin(0.5).setDepth(31);
-
-    // Blink the label
     this.tweens.add({ targets: arrowLabel, alpha:{from:0.2,to:1}, duration:300, yoyo:true, repeat:13,
       onComplete: ()=>{ arrowLabel.destroy(); }
     });
-
     let arrowAge = 0;
     const arrowEvent = this.time.addEvent({ delay: 16, loop: true, callback: ()=>{
       arrowAge += 0.016;
       arrowGfx.clear();
       if(arrowAge > 4){ arrowEvent.remove(); arrowGfx.destroy(); return; }
-
-      // Draw 4 directional chevron arrows from screen edges pointing to ship
       const corners = [
-        {cx: 30,   cy: H/2,  ang: 0         },   // left edge → right
-        {cx: W-30, cy: H/2,  ang: Math.PI   },   // right edge → left
-        {cx: W/2,  cy: 30,   ang: Math.PI/2 },   // top edge → down
-        {cx: W/2,  cy: H-30, ang: -Math.PI/2},   // bottom edge → up
+        {cx: 30,   cy: H/2,  ang: 0         },
+        {cx: W-30, cy: H/2,  ang: Math.PI   },
+        {cx: W/2,  cy: 30,   ang: Math.PI/2 },
+        {cx: W/2,  cy: H-30, ang: -Math.PI/2},
       ];
-
-      const pulse = 0.5 + 0.5*Math.sin(arrowAge * 8);
+      const pulse = 0.5 + 0.5*_S(arrowAge * 8);
       corners.forEach(c=>{
-        // Only show arrow if ship is generally in that direction
         const dx = sx - c.cx, dy = sy - c.cy;
-        const edgeAng = Math.atan2(dy, dx);
-        // Check if the arrow's inward direction roughly matches direction to ship
+        const edgeAng = _A2(dy, dx);
         const diff = Math.abs(edgeAng - c.ang);
-        const normDiff = Math.min(diff, Math.PI*2 - diff);
+        const normDiff = _MN(diff, Math.PI*2 - diff);
         if(normDiff > Math.PI * 0.6) return;
-
         arrowGfx.save();
         arrowGfx.translateCanvas(c.cx, c.cy);
         arrowGfx.rotateCanvas(edgeAng);
         arrowGfx.fillStyle(0x00ffff, 0.5 + 0.4*pulse);
-        // Draw chevron
         for(let k=0;k<3;k++){
           const ox = k*10;
           arrowGfx.fillTriangle(12+ox,0, -2+ox,-7, -2+ox,7);
@@ -2598,7 +2156,6 @@ class GameScene extends Phaser.Scene {
     }});
   }
 }
-
 const config = {
   type: Phaser.AUTO,
   width: W,
@@ -2608,5 +2165,4 @@ const config = {
   scene: [MenuScene, GameScene, GameOverScene],
   render: { antialias: true }
 };
-
 const game = new Phaser.Game(config);
