@@ -186,104 +186,31 @@ const F = (() => {
       init();
       if(this._musicRunning) return;
       this._musicRunning = true;
-
-      
       const musicBus = ctx.createGain();
-      musicBus.gain.value = 0; 
+      musicBus.gain.value = 0;
       musicBus.connect(ctx.destination);
       this._musicGain = musicBus;
+      musicBus.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.3);
 
       
-      musicBus.gain.linearRampToValueAtTime(2.18, ctx.currentTime + 4);
+      const seq = [220, 330, 262, 392, 262, 330, 220, 440];
+      let idx = 0;
+      const o = ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.value = seq[0];
+      const og = ctx.createGain();
+      og.gain.value = 0.18;
+      o.connect(og); og.connect(musicBus);
+      o.start();
 
-      
-      
-      const chords = [
-        [110, 165, 220, 277],   
-        [87,  130, 174, 220],   
-        [65,  98,  130, 196],   
-        [98,  147, 196, 247],   
-      ];
-      const chordDur = 8; 
-      let chordIdx = 0;
-      const nodes = [];
-
-      const playChord = () => {
+      const stepMs = 180;
+      const timer = setInterval(()=>{
         if(!this._musicRunning) return;
-        const freqs = chords[chordIdx % chords.length];
-        freqs.forEach((freq, fi) => {
-          const g = ctx.createGain();
-          g.gain.setValueAtTime(0, ctx.currentTime);
-          g.gain.linearRampToValueAtTime(0.06 - fi*0.008, ctx.currentTime + 2.5);
-          g.gain.setValueAtTime(0.06 - fi*0.008, ctx.currentTime + chordDur - 2);
-          g.gain.linearRampToValueAtTime(0, ctx.currentTime + chordDur);
-          g.connect(musicBus);
+        idx = (idx + 1) % seq.length;
+        o.frequency.setValueAtTime(seq[idx], ctx.currentTime);
+      }, stepMs);
 
-          const o = ctx.createOscillator();
-          o.type = fi===0 ? 'sine' : 'triangle';
-          o.frequency.value = freq;
-          
-          const lfo = ctx.createOscillator();
-          const lfoG = ctx.createGain();
-          lfo.frequency.value = 0.18 + fi*0.04;
-          lfoG.gain.value = freq * 0.006;
-          lfo.connect(lfoG); lfoG.connect(o.frequency);
-          lfo.start(); o.connect(g); o.start();
-          o.stop(ctx.currentTime + chordDur + 0.1);
-          lfo.stop(ctx.currentTime + chordDur + 0.1);
-          nodes.push(o, lfo, g);
-        });
-        chordIdx++;
-      };
-
-      
-      const drone = ctx.createOscillator();
-      const droneGain = ctx.createGain();
-      drone.type = 'sine';
-      drone.frequency.value = 36.7; 
-      droneGain.gain.value = 0.04;
-      drone.connect(droneGain); droneGain.connect(musicBus);
-      drone.start();
-      nodes.push(drone, droneGain);
-
-      
-      const breathLfo = ctx.createOscillator();
-      const breathGain = ctx.createGain();
-      breathLfo.frequency.value = 0.07;
-      breathGain.gain.value = 0.025;
-      breathLfo.connect(breathGain); breathGain.connect(droneGain.gain);
-      breathLfo.start();
-      nodes.push(breathLfo, breathGain);
-
-      
-      const shimmerFreqs = [880, 1108, 1320, 1760, 987, 1174];
-      const playShimmer = () => {
-        if(!this._musicRunning) return;
-        const freq = shimmerFreqs[Math.floor(Math.random()*shimmerFreqs.length)];
-        const g2 = ctx.createGain();
-        g2.gain.setValueAtTime(0, ctx.currentTime);
-        g2.gain.linearRampToValueAtTime(0.022, ctx.currentTime + 0.8);
-        g2.gain.linearRampToValueAtTime(0, ctx.currentTime + 3.5);
-        g2.connect(musicBus);
-        const o2 = ctx.createOscillator();
-        o2.type = 'sine';
-        o2.frequency.value = freq;
-        o2.connect(g2); o2.start(); o2.stop(ctx.currentTime + 3.6);
-        nodes.push(o2, g2);
-        const nextShimmer = 4000 + Math.random()*8000;
-        setTimeout(playShimmer, nextShimmer);
-      };
-      setTimeout(playShimmer, 6000);
-
-      
-      playChord();
-      const chordInterval = setInterval(()=>{
-        if(!this._musicRunning){ clearInterval(chordInterval); return; }
-        playChord();
-      }, chordDur * 1000);
-      nodes.push({ stop: ()=> clearInterval(chordInterval) });
-
-      this._musicNodes = nodes;
+      this._musicNodes = [o, og, { stop: ()=>clearInterval(timer) }];
     },
 
     stopMusic(fadeDur=2) {
