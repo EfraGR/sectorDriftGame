@@ -1078,8 +1078,6 @@ class GameScene extends Phaser.Scene {
 
   createEnemy(x,y){
 
-
-
     const maxType = this.sector>=7 ? 3 : this.sector>=5 ? 2 : this.sector>=3 ? 1 : 0;
     const type = Phaser.Math.Between(0, maxType);
     const g = this.add.graphics().setDepth(6);
