@@ -1,108 +1,11 @@
 const W = 800, H = 600;
 
-
-const F = (() => {
-  let ctx = null;
-  const init = () => {
-    if(!ctx) ctx = new (window.AudioContext||window.webkitAudioContext)();
-    if(ctx.state==='suspended') ctx.resume();
-  };
-  let m = null;
-  const master = () => {
-    init();
-    if(!m){ m = ctx.createGain(); m.gain.value = 0.35; m.connect(ctx.destination); }
-    return m;
-  };
-  const beep = (f=440,d=0.2,t='square',v=0.18) => {
-    init();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = t; o.frequency.value = f;
-    g.gain.setValueAtTime(v, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + d);
-    o.connect(g); g.connect(master());
-    o.start(); o.stop(ctx.currentTime + d);
-  };
-  return {
-    startEngine(){
-      init();
-      if(this._engine) return;
-      const o=ctx.createOscillator(), g=ctx.createGain();
-      o.type='square'; o.frequency.value=60; g.gain.value=0.08;
-      o.connect(g); g.connect(master()); o.start();
-      this._engine={o,g};
-    },
-    stopEngine(){
-      if(!this._engine) return;
-      const {o,g}=this._engine;
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.12);
-      setTimeout(()=>{ try{o.stop();g.disconnect();}catch(e){} this._engine=null; },140);
-    },
-    shoot(){ beep(720,0.08,'square',0.2); },
-    towerActivate(){ beep(440,0.25,'triangle',0.16); },
-    allTowersActivated(){ beep(660,0.35,'sawtooth',0.18); },
-    portalSpawn(){ beep(180,0.8,'sawtooth',0.2); },
-    portalEnter(){ beep(220,0.7,'square',0.2); },
-    collectItem(){ beep(880,0.2,'sine',0.18); },
-    damage(){ beep(160,0.25,'sawtooth',0.2); },
-    land(){ beep(190,0.2,'sine',0.15); },
-    enemyDie(){ beep(250,0.3,'triangle',0.18); },
-    sectorStart(){ beep(500,0.22,'square',0.18); },
-    brake(){ beep(120,0.12,'square',0.15); },
-    shipDestroy(){ beep(80,0.9,'sawtooth',0.2); },
-    _musicGain: null,
-    _musicNodes: [],
-    _musicRunning: false,
-    startMusic() {
-      init();
-      if(this._musicRunning) return;
-      this._musicRunning = true;
-      const musicBus = ctx.createGain();
-      musicBus.gain.value = 0;
-      musicBus.connect(ctx.destination);
-      this._musicGain = musicBus;
-      musicBus.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.3);
-      const seq = [220, 330, 262, 392, 262, 330, 220, 440];
-      let idx = 0;
-      const o = ctx.createOscillator();
-      o.type = 'square';
-      o.frequency.value = seq[0];
-      const og = ctx.createGain();
-      og.gain.value = 0.18;
-      o.connect(og); og.connect(musicBus);
-      o.start();
-      const stepMs = 180;
-      const timer = setInterval(()=>{
-        if(!this._musicRunning) return;
-        idx = (idx + 1) % seq.length;
-        o.frequency.setValueAtTime(seq[idx], ctx.currentTime);
-      }, stepMs);
-      this._musicNodes = [o, og, { stop: ()=>clearInterval(timer) }];
-    },
-    stopMusic(fadeDur=2) {
-      if(!this._musicRunning || !this._musicGain) return;
-      this._musicRunning = false;
-      const g = this._musicGain;
-      g.gain.setValueAtTime(g.gain.value, ctx.currentTime);
-      g.gain.linearRampToValueAtTime(0, ctx.currentTime + fadeDur);
-      setTimeout(()=>{
-        this._musicNodes.forEach(n=>{ try{ if(n.stop) n.stop(); if(n.disconnect) n.disconnect(); }catch(e){} });
-        this._musicNodes = [];
-        try{ g.disconnect(); }catch(e){}
-        this._musicGain = null;
-      }, (fadeDur+0.3)*1000);
-    },
-    unlock() { this.init = init; }
-  };
-})();
-
-
 function dist(x1,y1,x2,y2){ return Math.sqrt((x2-x1)**2+(y2-y1)**2); }
-function angleTo(x1,y1,x2,y2){ return Math.atan2(y2-y1,x2-x1); }
+function gr(x1,y1,x2,y2){ return Math.atan2(y2-y1,x2-x1); }
 function lerp(a,b,t){ return a+(b-a)*t; }
 
-function hasLineOfSight(x1,y1,x2,y2,planets){
-  for(const p of planets){
+function dk(x1,y1,x2,y2,cm){
+  for(const p of cm){
 
     const dx=x2-x1, dy=y2-y1;
     const len2=dx*dx+dy*dy;
@@ -110,39 +13,55 @@ function hasLineOfSight(x1,y1,x2,y2,planets){
     let t=((p.x-x1)*dx+(p.y-y1)*dy)/len2;
     t=Math.max(0,Math.min(1,t));
     const cx=x1+t*dx, cy=y1+t*dy;
-    if(dist(cx,cy,p.x,p.y)<p.radius-2) return false;
+    if(dist(cx,cy,p.x,p.y)<p.fy-2) return false;
   }
   return true;
 }
 
-class MenuScene extends Phaser.Scene {
+class ba extends Phaser.Scene {
   constructor(){ super('Menu'); }
 
   create(){
-    this._page = 'main'; 
-    this._objs = [];
-    this.cameras.main.setBackgroundColor('#000');
+    this.ga = 'main'; // 'main' | 'instructions' | 'leaderboard'
+    this.aq = [];
+    this.drawBg();
     this.showMain();
-    
-    this.input.once('pointerdown', ()=>{ try{ F.startEngine(); F.stopEngine(); }catch(e){} });
-    
-    this.input.keyboard.on('keydown', e => {
-      if(e.key==='START1') this.scene.start('g');
-    });
+  }
+
+  drawBg(){
+    const g = this.add.graphics().setDepth(0);
+    g.fillStyle(0x000000,1); g.fillRect(0,0,W,H);
+    // Scanlines
+    for(let y=0;y<H;y+=4){ g.fillStyle(0x000011,0.3); g.fillRect(0,y,W,2); }
+    // Stars
+    for(let i=0;i<220;i++){
+      const sz=Math.random()<0.04?2:0.8;
+      g.fillStyle(0xffffff,Phaser.Math.FloatBetween(0.1,0.7));
+      g.fillCircle(Phaser.Math.Between(0,W),Phaser.Math.Between(0,H),sz);
+    }
+    // Bottom perspective grid
+    g.lineStyle(1,0x001133,0.4);
+    for(let x=0;x<=W;x+=28){ g.lineBetween(x,H,W/2,H*0.72); }
+    g.lineStyle(1,0x001133,0.25);
+    for(let i=0;i<8;i++){
+      const t=i/8, y=H*0.72+t*(H-H*0.72);
+      g.lineBetween(0,y,W,y);
+    }
+    this.am = g;
   }
 
   clearPage(){
-    this._objs.forEach(o=>{ try{ o.destroy(); }catch(e){} });
-    this._objs = [];
+    this.aq.forEach(o=>{ try{ o.destroy(); }catch(e){} });
+    this.aq = [];
   }
 
-  addObj(o){ this._objs.push(o); return o; }
+  addObj(o){ this.aq.push(o); return o; }
 
-  btn(x, y, label, color, cb){
+  btn(x, y, bk, color, cb){
     const t = this.addObj(
-        this.add.text(x, y, "\\u26fd", {
-          fontSize:'22px', fontFamily:'Courier New', color, stroke:'#000000', strokeThickness:2
-        }).setOrigin(0.5).setInteractive().setDepth(10)
+      this.add.text(x, y, bk, {
+        fontSize:'22px', fontFamily:'Courier New', color, stroke:'#000000', strokeThickness:2
+      }).setOrigin(0.5).setInteractive().setDepth(10)
     );
     t.on('pointerover', ()=>{ t.setColor('#ffffff'); t.setScale(1.06); });
     t.on('pointerout',  ()=>{ t.setColor(color); t.setScale(1); });
@@ -152,218 +71,331 @@ class MenuScene extends Phaser.Scene {
 
   showMain(){
     this.clearPage();
-    this.addObj(this.add.text(W/2, 200, 'SECTOR DRIFT', {
-      fontSize:'40px', fontFamily:'Courier New', color:'#00ffff'
-    }).setOrigin(0.5).setDepth(5));
-    this.addObj(this.add.text(W/2, 238, 'Arcade landing roguelite', {
-      fontSize:'14px', fontFamily:'Courier New', color:'#777'
-    }).setOrigin(0.5).setDepth(5));
+    // Title
+    const t1 = this.addObj(this.add.text(W/2,148,'SECTOR',{fontSize:'72px',fontFamily:'Courier New',color:'#00ffff',stroke:'#003366',strokeThickness:4}).setOrigin(0.5).setDepth(5));
+    const t2 = this.addObj(this.add.text(W/2,222,'DRIFT', {fontSize:'72px',fontFamily:'Courier New',color:'#ff6600',stroke:'#330000',strokeThickness:4}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2,285,'Navigate · Land · Activate · Escape',{fontSize:'13px',fontFamily:'Courier New',color:'#556677'}).setOrigin(0.5).setDepth(5));
 
-    this.btn(W/2, 300, 'PLAY', '#ffff00', ()=>this.scene.start('g'));
-    this.btn(W/2, 345, 'LEADERBOARD', '#ffcc44', ()=>this.showLeaderboard());
+    this.tweens.add({targets:[t1,t2],alpha:{from:0.5,to:1},duration:1400,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
 
-    this.addObj(this.add.text(W-8,H-10,'v1.0',{fontSize:'9px',fontFamily:'Courier New',color:'#444'}).setOrigin(1,1).setDepth(5));
+    this.btn(W/2, 355, '▶  JUGAR',          '#ffff00', ()=>this.scene.start('Game'));
+    this.btn(W/2, 405, '?  INSTRUCCIONES',  '#44ccff', ()=>this.showInstructions());
+    this.btn(W/2, 455, '★  LEADERBOARD',   '#ffcc44', ()=>this.showLeaderboard());
+
+    // Version blip
+    this.addObj(this.add.text(W-8,H-10,'v1.0',{fontSize:'9px',fontFamily:'Courier New',color:'#223344'}).setOrigin(1,1).setDepth(5));
+  }
+
+  showInstructions(){
+    this.clearPage();
+
+    // Title bar
+    this.addObj(this.add.text(W/2,28,'INSTRUCCIONES',{fontSize:'20px',fontFamily:'Courier New',color:'#44ccff',stroke:'#001133',strokeThickness:2,letterSpacing:4}).setOrigin(0.5).setDepth(5));
+    const du = this.addObj(this.add.graphics().setDepth(5));
+    du.lineStyle(1,0x224466,1); du.lineBetween(40,44,W-40,44);
+
+    const bz = [
+      { gj:'OBJETIVO', color:'#ffff00', items:[
+        'Aterriza junto a cada antena 2s para activarla. Al activar todas, entra al agujero negro.',
+      ]},
+      { gj:'CONTROLES', color:'#44ccff', items:[
+        'WASD/Flechas: rotar y propulsar  |  ESPACIO: freno  |  F/Ctrl/Clic: disparar',
+      ]},
+      { gj:'RECURSOS', color:'#00ff88', items:[
+        'Aterriza en planetas: recarga combustible, energia y salud. Sin combustible tienes 3s.',
+      ]},
+      { gj:'MEJORAS (restos flotantes)', color:'#ffaa44', items:[
+        'ARMA: +1 bala por nivel (max 3)  |  TANQUE: +15 combustible max  |  SALUD: +30 HP',
+      ]},
+      { gj:'ENEMIGOS', color:'#ff4444', items:[
+        'Fighter S1+ | D.Fighter S3+ | Drone S5+ | Bomber S7+  — persiguen tu ultima posicion',
+      ]},
+      { gj:'FISICA', color:'#aa88ff', items:[
+        'Gravedad planetaria. Aterrizaje >80 dania. Asteroides se parten al dispararlos.',
+      ]},
+    ];
+
+    let y = 60;
+    bz.forEach(sec=>{
+      this.addObj(this.add.text(30,y,sec.gj,{fontSize:'11px',fontFamily:'Courier New',color:sec.color,letterSpacing:2}).setDepth(5));
+      y+=15;
+      sec.items.forEach(item=>{
+        this.addObj(this.add.text(44,y,'· '+item,{fontSize:'10px',fontFamily:'Courier New',color:'#7788aa',wordWrap:{width:W-80}}).setDepth(5));
+        y+=13;
+      });
+      y+=5;
+    });
+
+    du.lineBetween(40,y,W-40,y);
+    this.btn(W/2, y+30, '←  VOLVER', '#aaaaaa', ()=>this.showMain());
   }
 
   showLeaderboard(){
     this.clearPage();
-    let scores = [];
-    try{ scores = JSON.parse(localStorage.getItem('spaceSectorsLB')||'[]'); }catch(e){}
-    const list = scores.slice(0,10);
-    this.addObj(this.add.text(W/2,60,'LEADERBOARD',{fontSize:'18px',fontFamily:'Courier New',color:'#ffdd00'}).setOrigin(0.5));
-    if(list.length===0){
-      this.addObj(this.add.text(W/2,H/2,'NO RECORDS',{fontSize:'14px',fontFamily:'Courier New',color:'#666'}).setOrigin(0.5));
-    }else{
-      list.forEach((s,i)=>{
-        const y=100+i*26;
-        this.addObj(this.add.text(W/2-120,y,`${i+1}.`,{fontSize:'12px',fontFamily:'Courier New',color:'#999'}).setOrigin(0,0.5));
-        this.addObj(this.add.text(W/2-90,y,s.name,{fontSize:'14px',fontFamily:'Courier New',color:'#fff'}).setOrigin(0,0.5));
-        this.addObj(this.add.text(W/2+20,y,String(s.score),{fontSize:'14px',fontFamily:'Courier New',color:'#ffdd00'}).setOrigin(0,0.5));
-        this.addObj(this.add.text(W/2+110,y,`S${s.sector}`,{fontSize:'12px',fontFamily:'Courier New',color:'#888'}).setOrigin(0,0.5));
+
+    this.addObj(this.add.text(W/2,28,'✦  HALL OF FAME  ✦',{fontSize:'22px',fontFamily:'Courier New',color:'#ffdd00',stroke:'#443300',strokeThickness:3}).setOrigin(0.5).setDepth(5));
+
+    const du = this.addObj(this.add.graphics().setDepth(5));
+    du.lineStyle(1,0x334455,0.8);
+    du.lineBetween(40,50,W-40,50);
+
+    // Column headers
+    this.addObj(this.add.text(W/2-130,64,'#',      {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2-88, 64,'NOMBRE', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
+    this.addObj(this.add.text(W/2+16, 64,'PUNTOS', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
+    this.addObj(this.add.text(W/2+108,64,'SECT',   {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
+    du.lineBetween(40,74,W-40,74);
+
+    let ac = [];
+    try{ ac = JSON.parse(localStorage.getItem('spaceSectorsLB')||'[]'); }catch(e){}
+
+    const gg = ['🥇','🥈','🥉'];
+    if(ac.length===0){
+      this.addObj(this.add.text(W/2,200,'SIN REGISTROS AÚN\nJuega para aparecer aquí',{fontSize:'14px',fontFamily:'Courier New',color:'#223344',align:'center'}).setOrigin(0.5).setDepth(5));
+    } else {
+      ac.slice(0,10).forEach((s,i)=>{
+        const y = 90+i*34;
+        const ae = i<3;
+        const gb = i===0?0xffdd00:i===1?0xcccccc:i===2?0xcc8844:0x445566;
+        const fm = '#'+gb.toString(16).padStart(6,'0');
+
+        if(ae){
+          const rg = this.addObj(this.add.graphics().setDepth(4));
+          rg.fillStyle(gb,0.07); rg.fillRect(40,y-13,W-80,28);
+        }
+
+        this.addObj(this.add.text(W/2-130,y, i<3?gg[i]:`${i+1}.`, {fontSize:ae?'16px':'12px',fontFamily:'Courier New',color:fm}).setOrigin(0.5).setDepth(5));
+        this.addObj(this.add.text(W/2-88,  y, s.name,                   {fontSize:'18px',fontFamily:'Courier New',color:ae?'#ffffff':'#7788aa'}).setOrigin(0,0.5).setDepth(5));
+        this.addObj(this.add.text(W/2+16,  y, String(s.cj).padStart(7), {fontSize:'15px',fontFamily:'Courier New',color:fm}).setOrigin(0,0.5).setDepth(5));
+        this.addObj(this.add.text(W/2+112, y, `${s.dy}`,              {fontSize:'12px',fontFamily:'Courier New',color:'#445566'}).setOrigin(0,0.5).setDepth(5));
       });
     }
-    const clearBtn=this.addObj(this.add.text(W/2-50,H-50,'CLEAR',{fontSize:'12px',fontFamily:'Courier New',color:'#aa5555'}).setOrigin(0.5).setInteractive());
-    clearBtn.on('pointerdown',()=>{ try{localStorage.removeItem('spaceSectorsLB');}catch(e){} this.showLeaderboard(); });
-    this.btn(W/2+60, H-50, 'BACK', '#aaaaaa', ()=>this.showMain());
+
+    const cz = this.addObj(this.add.text(W/2-70,H-55,'[ BORRAR ]',{fontSize:'13px',fontFamily:'Courier New',color:'#553333'}).setOrigin(0.5).setDepth(5).setInteractive());
+    cz.on('pointerover',()=>cz.setColor('#ff4444'));
+    cz.on('pointerout', ()=>cz.setColor('#553333'));
+    cz.on('pointerdown',()=>{
+      try{ localStorage.removeItem('spaceSectorsLB'); }catch(e){}
+      this.showLeaderboard();
+    });
+
+    this.btn(W/2+70, H-55, '←  VOLVER', '#aaaaaa', ()=>this.showMain());
   }
 }
 
-class GameOverScene extends Phaser.Scene {
+class gm extends Phaser.Scene {
   constructor(){ super('GameOver'); }
-  init(data){ this.finalScore=data.score||0; this.sector=data.sector||1; this.reason=data.reason||'hull'; }
+  init(data){ this.dj=data.cj||0; this.dy=data.dy||1; this.al=data.al||'hull'; }
 
   create(){
-    this.nameChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
-    this.nameIdx = [0,0,0]; 
-    this.cursor = 0;
-    this.submitted = false;
-    this.scores = this.loadScores();
-    this.phase = 'entry'; 
-    this.cameras.main.setBackgroundColor('#000');
+    this.cr = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
+    this.ek = [0,0,0]; // 3 char name
+    this.fh = 0;
+    this.dq = false;
+    this.ac = this.loadScores();
+    this.gf = 'entry'; // 'entry' | 'board'
+
+    this.drawBg();
     this.buildEntryUI();
+
+    // Keyboard input
     this.input.keyboard.on('keydown', e => this.handleKey(e));
   }
 
+  drawBg(){
+    const g = this.add.graphics();
+    g.fillStyle(0x000000,1); g.fillRect(0,0,W,H);
+    // Scanlines
+    for(let y=0;y<H;y+=4){
+      g.fillStyle(0x000011, 0.35); g.fillRect(0,y,W,2);
+    }
+    // Stars
+    for(let i=0;i<200;i++){
+      const sz=Math.random()<0.05?1.5:0.8;
+      g.fillStyle(0xffffff, Phaser.Math.FloatBetween(0.1,0.6));
+      g.fillCircle(Phaser.Math.Between(0,W), Phaser.Math.Between(0,H), sz);
+    }
+    // Retro grid lines at bottom
+    g.lineStyle(1,0x001133,0.5);
+    for(let x=0;x<W;x+=32) g.lineBetween(x,H*0.7,W/2,H);
+    for(let x=0;x<W;x+=32) g.lineBetween(x,H,W/2,H*0.7);
+  }
+
   buildEntryUI(){
-    const msg = this.reason==='fuel' ? '★  OUT OF FUEL  ★' : '★  SHIP DESTROYED  ★';
-    const col = this.reason==='fuel' ? '#ffaa00' : '#ff4422';
+    const msg = this.al==='fuel' ? '★  SIN COMBUSTIBLE  ★' : '★  NAVE DESTRUIDA  ★';
+    const col = this.al==='fuel' ? '#ffaa00' : '#ff4422';
 
-    
-    this.add.text(W/2, 80, msg, {fontSize:'20px', fontFamily:'Courier New', color:col}).setOrigin(0.5);
-    this.add.text(W/2, 115, `SCORE ${this.finalScore}`, {fontSize:'20px', fontFamily:'Courier New', color:'#ffff00'}).setOrigin(0.5);
-    this.add.text(W/2, 142, `SECTOR ${this.sector}`, {fontSize:'13px', fontFamily:'Courier New', color:'#888'}).setOrigin(0.5);
+    // Death al — glitchy flicker
+    const gj = this.add.text(W/2, 55, msg, {
+      fontSize:'22px', fontFamily:'Courier New', color:col,
+      stroke:'#000000', strokeThickness:3
+    }).setOrigin(0.5);
+    this.tweens.add({targets:gj, alpha:{from:0.6,to:1}, duration:180, yoyo:true, repeat:-1});
 
-    this.add.text(W/2, 190, 'ENTER NAME', {fontSize:'12px', fontFamily:'Courier New', color:'#88ccff'}).setOrigin(0.5);
-    this.add.text(W/2, 210, '↑↓ LETTER  ←→ MOVE  ENTER SAVE', {fontSize:'9px', fontFamily:'Courier New', color:'#444'}).setOrigin(0.5);
+    // Score
+    this.add.text(W/2, 98, `PUNTUACIÓN`, {fontSize:'11px', fontFamily:'Courier New', color:'#445566', letterSpacing:4}).setOrigin(0.5);
+    this.add.text(W/2, 118, `${this.dj}`, {fontSize:'36px', fontFamily:'Courier New', color:'#ffff00', stroke:'#555500', strokeThickness:3}).setOrigin(0.5);
+    this.add.text(W/2, 158, `SECTOR ${this.dy}`, {fontSize:'14px', fontFamily:'Courier New', color:'#4488aa'}).setOrigin(0.5);
 
-    
-    this._letterObjs = [];
-    this._cursorGfx = this.add.graphics().setDepth(5);
+    // Entry prompt
+    this.add.text(W/2, 200, 'INGRESA TU NOMBRE', {fontSize:'13px', fontFamily:'Courier New', color:'#aaccff', letterSpacing:3}).setOrigin(0.5);
+    this.add.text(W/2, 218, '↑↓ CAMBIAR  ←→ CURSOR  ENTER CONFIRMAR', {fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:1}).setOrigin(0.5);
+
+    // 3-char letter picker
+    this.ha = [];
+    this.aj = this.add.graphics().setDepth(5);
     for(let i=0;i<3;i++){
       const x = W/2 + (i-1)*52;
-      const ltr = this.add.text(x, 258, this.nameChars[this.nameIdx[i]], {
+      const ltr = this.add.text(x, 258, this.cr[this.ek[i]], {
         fontSize:'42px', fontFamily:'Courier New', color:'#ffffff',
         stroke:'#000033', strokeThickness:4
       }).setOrigin(0.5);
-      this._letterObjs.push(ltr);
+      this.ha.push(ltr);
     }
     this.redrawCursor();
 
-    
-    this._lbGroup = [];
+    // Leaderboard preview (bottom half)
+    this.er = [];
     this.drawLeaderboardPreview();
 
-    
-    this._submitHint = this.add.text(W/2, 320, '▶  PRESS ENTER TO SUBMIT  ◀', {
+    // Submit button hint
+    this.bs = this.add.text(W/2, 320, '▶  ENTER PARA REGISTRAR  ◀', {
       fontSize:'12px', fontFamily:'Courier New', color:'#44ff88', letterSpacing:2
     }).setOrigin(0.5);
-    this.tweens.add({targets:this._submitHint, alpha:{from:0.3,to:1}, duration:600, yoyo:true, repeat:-1});
+    this.tweens.add({targets:this.bs, alpha:{from:0.3,to:1}, duration:600, yoyo:true, repeat:-1});
   }
 
   redrawCursor(){
-    const g = this._cursorGfx;
+    const g = this.aj;
     g.clear();
-    const x = W/2 + (this.cursor-1)*52;
-    g.lineStyle(2, 0x00ffff, 0.9);
-    g.strokeRect(x-24, 236, 48, 54);
+    const x = W/2 + (this.fh-1)*52;
+    g.lineStyle(3, 0x00ffff, 0.8);
+    g.strokeRect(x-22, 238, 44, 50);
+    // Corner accents
+    g.lineStyle(2, 0x00ffff, 0.5);
+    [[x-22,238],[x+22,238],[x-22,288],[x+22,288]].forEach(([cx,cy],i)=>{
+      const sx=i%2===0?1:-1, sy=i<2?1:-1;
+      g.lineBetween(cx,cy,cx+sx*8,cy);
+      g.lineBetween(cx,cy,cx,cy+sy*8);
+    });
   }
 
   drawLeaderboardPreview(){
-    this._lbGroup.forEach(o=>o.destroy());
-    this._lbGroup=[];
-    const scores = this.scores.slice(0,8);
+    this.er.forEach(o=>o.destroy());
+    this.er=[];
+    const ac = this.ac.slice(0,8);
 
-    const hdr = this.add.text(W/2, 330, 'HALL OF FAME', {fontSize:'12px', fontFamily:'Courier New', color:'#55aaff', letterSpacing:2}).setOrigin(0.5);
-    this._lbGroup.push(hdr);
+    const hdr = this.add.text(W/2, 340, '—  HALL OF FAME  —', {fontSize:'11px', fontFamily:'Courier New', color:'#335566', letterSpacing:4}).setOrigin(0.5);
+    this.er.push(hdr);
 
-    scores.forEach((s,i)=>{
+    ac.forEach((s,i)=>{
       const y = 360 + i*22;
-      const rankCol = i===0?'#ffdd00':i===1?'#cccccc':i===2?'#cc8844':'#445566';
-      const rank = this.add.text(W/2-120, y, `${i+1}.`.padStart(3), {fontSize:'12px', fontFamily:'Courier New', color:rankCol}).setOrigin(0,0.5);
+      const gb = i===0?'#ffdd00':i===1?'#cccccc':i===2?'#cc8844':'#445566';
+      const rank = this.add.text(W/2-120, y, `${i+1}.`.padStart(3), {fontSize:'12px', fontFamily:'Courier New', color:gb}).setOrigin(0,0.5);
       const name = this.add.text(W/2-95, y, s.name, {fontSize:'13px', fontFamily:'Courier New', color:i<3?'#ffffff':'#8899aa'}).setOrigin(0,0.5);
-      const sc = this.add.text(W/2+30, y, String(s.score).padStart(7,' '), {fontSize:'13px', fontFamily:'Courier New', color:rankCol}).setOrigin(0,0.5);
-      const sec = this.add.text(W/2+105, y, `S${s.sector}`, {fontSize:'10px', fontFamily:'Courier New', color:'#334455'}).setOrigin(0,0.5);
-      this._lbGroup.push(rank,name,sc,sec);
+      const sc = this.add.text(W/2+30, y, String(s.cj).padStart(7,' '), {fontSize:'13px', fontFamily:'Courier New', color:gb}).setOrigin(0,0.5);
+      const sec = this.add.text(W/2+105, y, `S${s.dy}`, {fontSize:'10px', fontFamily:'Courier New', color:'#334455'}).setOrigin(0,0.5);
+      this.er.push(rank,name,sc,sec);
     });
 
-    if(scores.length===0){
-      const empty = this.add.text(W/2,380,'NO RECORDS YET',{fontSize:'12px',fontFamily:'Courier New',color:'#223344'}).setOrigin(0.5);
-      this._lbGroup.push(empty);
+    if(ac.length===0){
+      const bj = this.add.text(W/2,380,'SIN REGISTROS AÚN',{fontSize:'12px',fontFamily:'Courier New',color:'#223344'}).setOrigin(0.5);
+      this.er.push(bj);
     }
   }
 
   handleKey(e){
-    if(this.submitted) return;
+    if(this.dq) return;
     const k = e.key;
-    if(k==='ArrowUp'||k==='w'||k==='W'||k==='P1U'){
-      this.nameIdx[this.cursor]=(this.nameIdx[this.cursor]+1)%this.nameChars.length;
-      this._letterObjs[this.cursor].setText(this.nameChars[this.nameIdx[this.cursor]]);
-    } else if(k==='ArrowDown'||k==='s'||k==='S'||k==='P1D'){
-      this.nameIdx[this.cursor]=(this.nameIdx[this.cursor]-1+this.nameChars.length)%this.nameChars.length;
-      this._letterObjs[this.cursor].setText(this.nameChars[this.nameIdx[this.cursor]]);
-    } else if(k==='ArrowRight'||k==='d'||k==='D'||k==='P1R'){
-      this.cursor=Math.min(2,this.cursor+1); this.redrawCursor();
-    } else if(k==='ArrowLeft'||k==='a'||k==='A'||k==='P1L'){
-      this.cursor=Math.max(0,this.cursor-1); this.redrawCursor();
-    } else if(k==='Enter'||k===' '||k==='P1A'||k==='P1B'||k==='START1'){
+    if(k==='ArrowUp'||k==='w'||k==='W'){
+      this.ek[this.fh]=(this.ek[this.fh]+1)%this.cr.length;
+      this.ha[this.fh].setText(this.cr[this.ek[this.fh]]);
+    } else if(k==='ArrowDown'||k==='s'||k==='S'){
+      this.ek[this.fh]=(this.ek[this.fh]-1+this.cr.length)%this.cr.length;
+      this.ha[this.fh].setText(this.cr[this.ek[this.fh]]);
+    } else if(k==='ArrowRight'||k==='d'||k==='D'){
+      this.fh=Math.min(2,this.fh+1); this.redrawCursor();
+    } else if(k==='ArrowLeft'||k==='a'||k==='A'){
+      this.fh=Math.max(0,this.fh-1); this.redrawCursor();
+    } else if(k==='Enter'||k===' '){
       this.submitScore();
     }
   }
 
   submitScore(){
-    if(this.submitted) return;
-    this.submitted=true;
-    const name = this.nameIdx.map(i=>this.nameChars[i]).join('');
-    this.saveScore(name, this.finalScore, this.sector);
-    this.scores = this.loadScores();
+    if(this.dq) return;
+    this.dq=true;
+    const name = this.ek.map(i=>this.cr[i]).join('');
+    this.saveScore(name, this.dj, this.dy);
+    this.ac = this.loadScores();
 
-    
-    this._submitHint.setText('✦  SUBMITTED  ✦').setColor('#ffff00');
-    this._cursorGfx.clear();
-    this._letterObjs.forEach((l,i)=>{ l.setColor('#ffff00'); });
+    // Flash dq
+    this.bs.setText('✦  REGISTRADO  ✦').setColor('#ffff00');
+    this.aj.clear();
+    this.ha.forEach((l,i)=>{ l.setColor('#ffff00'); });
 
     this.time.delayedCall(900, ()=>{ this.showFullBoard(); });
   }
 
   showFullBoard(){
-    
+    // Clear everything, show full leaderboard
     this.children.list.slice(0).forEach(o=>{
       if(o.type==='Graphics'||o.type==='Text') try{ o.destroy(); }catch(e){}
     });
 
     this.drawBg();
-    const scores = this.scores;
+    const ac = this.ac;
 
     this.add.text(W/2, 32, '✦  HALL OF FAME  ✦', {
       fontSize:'26px', fontFamily:'Courier New', color:'#ffdd00',
       stroke:'#443300', strokeThickness:3
     }).setOrigin(0.5);
 
-    const lineG = this.add.graphics();
-    lineG.lineStyle(1,0x334455,0.8); lineG.lineBetween(W/2-160,58,W/2+160,58);
+    const du = this.add.graphics();
+    du.lineStyle(1,0x334455,0.8); du.lineBetween(W/2-160,58,W/2+160,58);
 
-    
+    // Column headers
     this.add.text(W/2-130, 70, '#', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0.5);
-    this.add.text(W/2-85, 70, 'NAME', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
+    this.add.text(W/2-85, 70, 'NOMBRE', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
     this.add.text(W/2+20, 70, 'PUNTOS', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
     this.add.text(W/2+105, 70, 'SECT', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
-    lineG.lineBetween(W/2-160,80,W/2+160,80);
+    du.lineBetween(W/2-160,80,W/2+160,80);
 
-    const medals = ['🥇','🥈','🥉'];
-    scores.slice(0,10).forEach((s,i)=>{
+    const gg = ['🥇','🥈','🥉'];
+    ac.slice(0,10).forEach((s,i)=>{
       const y = 96 + i*34;
-      const isTop = i<3;
-      const rankCol = i===0?0xffdd00:i===1?0xcccccc:i===2?0xcc8844:0x334455;
-      const rankHex = '#'+rankCol.toString(16).padStart(6,'0');
+      const ae = i<3;
+      const gb = i===0?0xffdd00:i===1?0xcccccc:i===2?0xcc8844:0x334455;
+      const fm = '#'+gb.toString(16).padStart(6,'0');
 
-      
-      if(isTop){
+      // Row highlight for top 3
+      if(ae){
         const rowG = this.add.graphics();
-        rowG.fillStyle(rankCol, 0.06);
+        rowG.fillStyle(gb, 0.06);
         rowG.fillRect(W/2-160, y-12, 320, 28);
       }
 
-      const rankTxt = i<3 ? medals[i] : `${i+1}.`;
-      this.add.text(W/2-130, y, rankTxt, {fontSize:isTop?'16px':'12px', fontFamily:'Courier New', color:rankHex}).setOrigin(0.5);
-      this.add.text(W/2-85, y, s.name, {fontSize:'18px', fontFamily:'Courier New', color:isTop?'#ffffff':'#7788aa'}).setOrigin(0,0.5);
-      this.add.text(W/2+20, y, String(s.score).padStart(7), {fontSize:'16px', fontFamily:'Courier New', color:rankHex}).setOrigin(0,0.5);
-      this.add.text(W/2+112, y, `${s.sector}`, {fontSize:'13px', fontFamily:'Courier New', color:'#445566'}).setOrigin(0,0.5);
+      const dd = i<3 ? gg[i] : `${i+1}.`;
+      this.add.text(W/2-130, y, dd, {fontSize:ae?'16px':'12px', fontFamily:'Courier New', color:fm}).setOrigin(0.5);
+      this.add.text(W/2-85, y, s.name, {fontSize:'18px', fontFamily:'Courier New', color:ae?'#ffffff':'#7788aa'}).setOrigin(0,0.5);
+      this.add.text(W/2+20, y, String(s.cj).padStart(7), {fontSize:'16px', fontFamily:'Courier New', color:fm}).setOrigin(0,0.5);
+      this.add.text(W/2+112, y, `${s.dy}`, {fontSize:'13px', fontFamily:'Courier New', color:'#445566'}).setOrigin(0,0.5);
     });
 
-    lineG.lineBetween(W/2-160, 96+10*34-8, W/2+160, 96+10*34-8);
+    du.lineBetween(W/2-160, 96+10*34-8, W/2+160, 96+10*34-8);
 
-    const retry = this.add.text(W/2-80, H-60, '[ RETRY ]', {fontSize:'16px', fontFamily:'Courier New', color:'#44ff88', stroke:'#002200', strokeThickness:2}).setOrigin(0.5).setInteractive();
-    retry.on('pointerover',()=>retry.setColor('#ffffff'));
-    retry.on('pointerout',()=>retry.setColor('#44ff88'));
-    retry.on('pointerdown',()=>this.scene.start('g'));
+    const cg = this.add.text(W/2-80, H-60, '[ REINTENTAR ]', {fontSize:'16px', fontFamily:'Courier New', color:'#44ff88', stroke:'#002200', strokeThickness:2}).setOrigin(0.5).setInteractive();
+    cg.on('pointerover',()=>cg.setColor('#ffffff'));
+    cg.on('pointerout',()=>cg.setColor('#44ff88'));
+    cg.on('pointerdown',()=>this.scene.start('Game'));
 
-    const menu = this.add.text(W/2+80, H-60, '[ MENU ]', {fontSize:'16px', fontFamily:'Courier New', color:'#aaaaaa'}).setOrigin(0.5).setInteractive();
+    const menu = this.add.text(W/2+80, H-60, '[ MENÚ ]', {fontSize:'16px', fontFamily:'Courier New', color:'#aaaaaa'}).setOrigin(0.5).setInteractive();
     menu.on('pointerover',()=>menu.setColor('#ffffff'));
     menu.on('pointerout',()=>menu.setColor('#aaaaaa'));
     menu.on('pointerdown',()=>this.scene.start('Menu'));
 
-    
-    this.tweens.add({targets:[retry,menu], alpha:{from:0.7,to:1}, duration:800, yoyo:true, repeat:-1});
+    // Blinking fh on buttons
+    this.tweens.add({targets:[cg,menu], alpha:{from:0.7,to:1}, duration:800, yoyo:true, repeat:-1});
   }
 
   loadScores(){
@@ -373,25 +405,25 @@ class GameOverScene extends Phaser.Scene {
     }catch(e){ return []; }
   }
 
-  saveScore(name, score, sector){
+  saveScore(name, cj, dy){
     try{
-      let scores = this.loadScores();
-      scores.push({name, score, sector});
-      scores.sort((a,b)=>b.score-a.score);
-      scores = scores.slice(0,10);
-      localStorage.setItem('spaceSectorsLB', JSON.stringify(scores));
+      let ac = this.loadScores();
+      ac.push({name, cj, dy});
+      ac.sort((a,b)=>b.cj-a.cj);
+      ac = ac.slice(0,10);
+      localStorage.setItem('spaceSectorsLB', JSON.stringify(ac));
     }catch(e){}
   }
 }
 
-class GameScene extends Phaser.Scene {
-  constructor(){ super('g'); }
+class eq extends Phaser.Scene {
+  constructor(){ super('Game'); }
 
   init(){
-    this.sector = 1;
-    this.score = 0;
+    this.dy = 1;
+    this.cj = 0;
 
-    this.upgrades = { weapon:0, extraTank:0 };
+    this.gy = { weapon:0, extraTank:0 };
   }
 
   create(){
@@ -400,35 +432,34 @@ class GameScene extends Phaser.Scene {
     this.createShip();
     this.createUI();
     this.createInput();
-    this.sectorTransition = false;
-    F.startMusic();
+    this.de = false;
   }
 
   generateSector(){
 
-    if(this.fuelDepots) this.fuelDepots.forEach(f=>{ if(f.gfx) f.gfx.destroy(); if(f.label) f.label.destroy(); });
-    if(this.asteroids) this.asteroids.forEach(a=>{ if(a.gfx) a.gfx.destroy(); });
-    if(this.planets) this.planets.forEach(p=>{ if(p.gfx) p.gfx.destroy(); if(p.label) p.label.destroy(); if(p.ring) p.ring.destroy(); });
-    if(this.towers) this.towers.forEach(t=>{ if(t.gfx) t.gfx.destroy(); if(t.beam) t.beam.destroy(); if(t.timer) t.timer.destroy(); });
-    if(this.enemies) this.enemies.forEach(e=>{ if(e.gfx) e.gfx.destroy(); });
-    if(this.bullets) this.bullets.forEach(b=>{ if(b.gfx) b.gfx.destroy(); });
-    if(this.enemyBullets) this.enemyBullets.forEach(b=>{ if(b.gfx) b.gfx.destroy(); });
-    if(this.wrecks) this.wrecks.forEach(w=>{ if(w.gfx) w.gfx.destroy(); if(w.label) w.label.destroy(); });
-    if(this.portalGfx){ this.portalGfx.destroy(); this.portalGfx=null; }
-    if(this.starfield) this.starfield.destroy();
-    if(this.sectorLabel) this.sectorLabel.destroy();
+    if(this.dv) this.dv.forEach(f=>{ if(f.gfx) f.gfx.destroy(); if(f.bk) f.bk.destroy(); });
+    if(this.ft) this.ft.forEach(a=>{ if(a.gfx) a.gfx.destroy(); });
+    if(this.cm) this.cm.forEach(p=>{ if(p.gfx) p.gfx.destroy(); if(p.bk) p.bk.destroy(); if(p.ring) p.ring.destroy(); });
+    if(this.eg) this.eg.forEach(t=>{ if(t.gfx) t.gfx.destroy(); if(t.beam) t.beam.destroy(); if(t.timer) t.timer.destroy(); });
+    if(this.gx) this.gx.forEach(e=>{ if(e.gfx) e.gfx.destroy(); });
+    if(this.da) this.da.forEach(b=>{ if(b.gfx) b.gfx.destroy(); });
+    if(this.co) this.co.forEach(b=>{ if(b.gfx) b.gfx.destroy(); });
+    if(this.fd) this.fd.forEach(w=>{ if(w.gfx) w.gfx.destroy(); if(w.bk) w.bk.destroy(); });
+    if(this.ad){ this.ad.destroy(); this.ad=null; }
+    if(this.he) this.he.destroy();
+    if(this.em) this.em.destroy();
     if(this.particles) this.particles.destroy();
-    if(this.planetTurrets) this.planetTurrets.forEach(t=>{ if(t.gfx) t.gfx.destroy(); });
+    if(this.gt) this.gt.forEach(t=>{ if(t.gfx) t.gfx.destroy(); });
 
-    const s = this.sector;
+    const s = this.dy;
     const g = this.add.graphics();
-    this.starfield = g;
+    this.he = g;
 
     for(let i=0;i<180;i++){
       const x=Phaser.Math.Between(0,W), y=Phaser.Math.Between(0,H);
       const r=Phaser.Math.FloatBetween(0.5,1.8);
-      const bright = Phaser.Math.FloatBetween(0.2,0.9);
-      g.fillStyle(0xffffff, bright);
+      const gs = Phaser.Math.FloatBetween(0.2,0.9);
+      g.fillStyle(0xffffff, gs);
       g.fillCircle(x,y,r);
     }
 
@@ -439,276 +470,309 @@ class GameScene extends Phaser.Scene {
       g.fillEllipse(x,y,Phaser.Math.Between(80,200),Phaser.Math.Between(60,150));
     }
 
-    this.sectorLabel = this.add.text(W/2, 18, `SECTOR ${s}`, {fontSize:'14px',fontFamily:'Courier New',color:'#335577'}).setOrigin(0.5).setDepth(10);
+    this.em = this.add.text(W/2, 18, `SECTOR ${s}`, {fontSize:'14px',fontFamily:'Courier New',color:'#335577'}).setOrigin(0.5).setDepth(10);
 
-    
-    if(this._hintBg) this._hintBg.forEach(o=>{ try{o.destroy();}catch(e){} });
-    this._hintBg = [];
-    const numPlanets = s===1 ? 1 : Math.min(2+Math.floor(s/2.5), 6);
-    const numTowers  = s===1 ? 1 : Math.min(1+Math.ceil(s*0.92), numPlanets*2);
+    // Sector 1: sidebar hint panel on the right
+    if(this.fq) this.fq.forEach(o=>{ try{o.destroy();}catch(e){} });
+    this.fq = [];
+    if(s===1){
+      const gc = W - 148;
+      const fc = H/2 - 110;
+      const ab = 138;
+      const gi = 220;
 
-    this.planets = [];
-    this.towers = [];
-    this.enemies = [];
-    this.bullets = [];
-    this.enemyBullets = [];
-    this.wrecks = [];
-    this.fuelDepots = [];
-    this.asteroids = [];
-    this.portalGfx = null;
-    this.portalActive = false;
-    this.planetTurrets = [];
-    this.landingTimer = 0;
-    this.landingTower = null;
-    this.activeTowers = 0;
+      // Panel background
+      const gh = this.add.graphics().setDepth(8);
+      gh.fillStyle(0x001122, 0.82);
+      gh.fillRoundedRect(gc, fc, ab, gi, 6);
+      gh.lineStyle(1, 0x0055aa, 0.7);
+      gh.strokeRoundedRect(gc, fc, ab, gi, 6);
+      this.fq.push(gh);
 
-    const positions = [];
-    for(let i=0;i<numPlanets;i++){
+      // Header
+      const fg = this.add.text(gc + ab/2, fc + 14, '[ TUTORIAL ]', {
+        fontSize:'9px', fontFamily:'Courier New', color:'#44ccff', letterSpacing:3
+      }).setOrigin(0.5).setDepth(9);
+      this.fq.push(fg);
+
+      // Divider
+      const divG = this.add.graphics().setDepth(9);
+      divG.lineStyle(1, 0x003366, 0.8);
+      divG.lineBetween(gc+8, fc+24, gc+ab-8, fc+24);
+      this.fq.push(divG);
+
+      const ay = [
+        { icon:'🚀', text:'Mueve la nave\ncon WASD' },
+        { icon:'🪐', text:'Aterriza en\nel planeta' },
+        { icon:'📡', text:'Activa la\nantena (2 seg)' },
+        { icon:'🌀', text:'Entra al\nAgujero Negro' },
+      ];
+
+      ay.forEach((step, i) => {
+        const sy = fc + 38 + i * 46;
+        const gz = this.add.text(gc + 14, sy + 4, step.icon, {
+          fontSize:'18px'
+        }).setOrigin(0, 0.5).setDepth(9);
+        const ev = this.add.text(gc + 38, sy, step.text, {
+          fontSize:'10px', fontFamily:'Courier New', color:'#88bbdd',
+          lineSpacing: 3, wordWrap:{width: ab - 46}
+        }).setOrigin(0, 0.5).setDepth(9);
+        // Step number circle
+        const numG = this.add.graphics().setDepth(9);
+        numG.fillStyle(0x0055aa, 0.7);
+        numG.fillCircle(gc + 14, sy + 4, 9);
+        numG.lineStyle(1, 0x0088ff, 0.6);
+        numG.strokeCircle(gc + 14, sy + 4, 9);
+        const bc = this.add.text(gc + 14, sy + 4, `${i+1}`, {
+          fontSize:'9px', fontFamily:'Courier New', color:'#ffffff'
+        }).setOrigin(0.5).setDepth(10);
+        this.fq.push(gz, ev, numG, bc);
+      });
+
+      // Fade out after 20s
+      this.time.delayedCall(16000, ()=>{
+        if(this.fq && this.dy===1){
+          this.fq.forEach(o=>{ this.tweens.add({targets:o, alpha:0, duration:3000}); });
+        }
+      });
+    }
+
+    const gq = s===1 ? 1 : Math.min(2+Math.floor(s/2.5), 6);
+    const ao  = s===1 ? 1 : Math.min(1+Math.ceil(s*0.92), gq*2);
+
+    this.cm = [];
+    this.eg = [];
+    this.gx = [];
+    this.da = [];
+    this.co = [];
+    this.fd = [];
+    this.dv = [];
+    this.ft = [];
+    this.ad = null;
+    this.bh = false;
+    this.gt = [];
+    this.bi = 0;
+    this.fr = null;
+    this.an = 0;
+
+    const ai = [];
+    for(let i=0;i<gq;i++){
       let x,y,tries=0;
-      if(s===1 && i===0){
-        
-        x = Phaser.Math.Between(Math.floor(W*0.25), Math.floor(W*0.5));
-        y = Phaser.Math.Between(Math.floor(H*0.35), Math.floor(H*0.65));
-      } else {
-        do {
-          x = Phaser.Math.Between(80,W-80);
-          y = Phaser.Math.Between(80,H-80);
-          tries++;
-        } while(tries<50 && positions.some(p=>dist(p.x,p.y,x,y)<180));
-      }
-      positions.push({x,y});
+      do {
+        x = Phaser.Math.Between(80,W-80);
+        y = Phaser.Math.Between(80,H-80);
+        tries++;
+      } while(tries<50 && ai.some(p=>dist(p.x,p.y,x,y)<180));
+      ai.push({x,y});
       this.createPlanet(x,y,i);
     }
 
-    
-    if(s>=4){
-      const numTurrets = Math.min(1 + Math.floor((s-3)*0.9), 6);
-      for(let ti=0;ti<numTurrets;ti++){
-        const planet = this.planets[ti % this.planets.length];
-        
-        
-        const baseAngle = (ti/Math.max(numTurrets,1))*Math.PI*2 + Math.PI + Math.random()*0.4 - 0.2;
-        this.createPlanetTurret(planet, baseAngle);
-      }
-    }
-
-    
-    for(let i=0;i<Math.min(numTowers,numPlanets*2);i++){
-      const planet = this.planets[i % this.planets.length];
-      const turretAnglesOnPlanet = this.planetTurrets
-          .filter(t=>t.planet===planet)
-          .map(t=>t.angle);
-      let angle = (i/numTowers)*Math.PI*2 + Math.random()*0.5;
-      
-      for(let attempt=0; attempt<24; attempt++){
-        const candidate = angle + attempt*(Math.PI/12);
-        const tooClose = turretAnglesOnPlanet.some(ta=>{
-          let da = Math.abs(candidate - ta);
-          if(da > Math.PI) da = Math.PI*2 - da;
-          return da < Math.PI/2;
-        });
-        if(!tooClose){ angle = candidate; break; }
-      }
-      this.createTower(planet, angle);
+    for(let i=0;i<Math.min(ao,gq*2);i++){
+      const dn = this.cm[i % this.cm.length];
+      const bv = (i/ao)*Math.PI*2 + Math.random()*0.5;
+      this.createTower(dn, bv);
     }
 
     if(s>1){
-      
-      const blockedPositions = [
-        ...this.towers.map(t=>({x:t.x,y:t.y})),
-        ...this.planetTurrets.map(t=>({x:t.bx+Math.cos(t.angle)*12, y:t.by+Math.sin(t.angle)*12})),
-      ];
-      const isFarFromTowers = (x,y) => blockedPositions.every(t=>dist(x,y,t.x,t.y)>36);
+      // Max 3 items total (consumables + gy). Never bd on top of antenna eg.
+      const dg = this.eg.map(t=>({x:t.x,y:t.y}));
+      const be = (x,y) => dg.every(t=>dist(x,y,t.x,t.y)>34);
 
-      const spawnItemOnPlanet = (planet, angleHint) => {
-        for(let attempt=0; attempt<12; attempt++){
-          const a = angleHint + attempt*(Math.PI*2/12);
-          const ix = planet.x + Math.cos(a)*(planet.radius+22);
-          const iy = planet.y + Math.sin(a)*(planet.radius+22);
-          if(isFarFromTowers(ix,iy)) return {x:ix, y:iy};
+      const fi = (dn, eu) => {
+        for(let cs=0; cs<12; cs++){
+          const a = eu + cs*(Math.PI*2/12);
+          const ix = dn.x + Math.cos(a)*(dn.fy+22);
+          const iy = dn.y + Math.sin(a)*(dn.fy+22);
+          if(be(ix,iy)) return {x:ix, y:iy};
         }
         return null;
       };
 
-      
-      
-      const allUpgrades = ['weapon','extraTank'].filter(t=>(this.upgrades[t]||0)<3);
-      const itemPool = [{kind:'fuel'}, {kind:'health'}];
-      if(s===3 && (this.upgrades.weapon||0)===0){
-        
-        itemPool.push({kind:'upgrade', type:'weapon'});
-      } else if(allUpgrades.length>0){
-        const upg = allUpgrades[Phaser.Math.Between(0,allUpgrades.length-1)];
-        itemPool.push({kind:'upgrade', type:upg});
+      // Build pool: 1 fuel + 1 health + 1 upgrade (or 2nd fuel if maxed)
+      const gn = ['weapon','extraTank'].filter(t=>(this.gy[t]||0)<3);
+      const ar = [{kind:'fuel'}, {kind:'health'}];
+      if(gn.length>0){
+        const upg = gn[Phaser.Math.Between(0,gn.length-1)];
+        ar.push({kind:'upgrade', type:upg});
       } else {
-        itemPool.push({kind:'fuel'});
+        ar.push({kind:'fuel'});
       }
-      
-      for(let i=itemPool.length-1;i>0;i--){
+      // Shuffle
+      for(let i=ar.length-1;i>0;i--){
         const j=Math.floor(Math.random()*(i+1));
-        [itemPool[i],itemPool[j]]=[itemPool[j],itemPool[i]];
+        [ar[i],ar[j]]=[ar[j],ar[i]];
       }
-      let spawned=0;
-      for(let ii=0;ii<itemPool.length&&spawned<3;ii++){
-        const item=itemPool[ii];
-        const planet=this.planets[spawned%this.planets.length];
-        const baseAngle=(spawned/3)*Math.PI*2+Math.random()*0.5;
-        const pos=spawnItemOnPlanet(planet,baseAngle);
+      let en=0;
+      for(let ii=0;ii<ar.length&&en<3;ii++){
+        const item=ar[ii];
+        const dn=this.cm[en%this.cm.length];
+        const ge=(en/3)*Math.PI*2+Math.random()*0.5;
+        const pos=fi(dn,ge);
         if(!pos) continue;
-        if(item.kind==='fuel') this.createFuelDepot(pos.x,pos.y,planet);
+        if(item.kind==='fuel') this.createFuelDepot(pos.x,pos.y,dn);
         else this.createWreck(pos.x,pos.y,item.kind==='health'?'health':item.type);
-        spawned++;
+        en++;
       }
     }
 
     if(s>=3){
-      const numEnemies = Math.min(Math.floor((s-2)*1.38), 7);
-      for(let i=0;i<numEnemies;i++){
+      const cx = Math.min(Math.floor((s-2)*1.38), 7);
+      for(let i=0;i<cx;i++){
         const px = Phaser.Math.Between(50,W-50);
         const py = Phaser.Math.Between(50,H-50);
         this.createEnemy(px,py);
       }
     }
-    const numAsteroids = s===1 ? 0 : 3 + Math.floor(s * 1.1);
-    for(let ai=0; ai<numAsteroids; ai++){
+    // Planet turrets — dy 5+
+    if(s>=5){
+      const cu = Math.min(Math.floor((s-4)*0.8), 4);
+      for(let ti=0;ti<cu;ti++){
+        const dn = this.cm[ti % this.cm.length];
+        const bv = (ti/Math.max(cu,1))*Math.PI*2 + Math.random()*0.6;
+        this.createPlanetTurret(dn, bv);
+      }
+    }
+
+    const fk = s===1 ? 0 : 3 + Math.floor(s * 1.1);
+    for(let ai=0; ai<fk; ai++){
       let ax, ay, tries=0;
       do {
         ax = Phaser.Math.Between(30, W-30);
         ay = Phaser.Math.Between(30, H-30);
         tries++;
-      } while(tries<80 && this.planets.some(p=>dist(ax,ay,p.x,p.y)<p.radius+40));
+      } while(tries<80 && this.cm.some(p=>dist(ax,ay,p.x,p.y)<p.fy+40));
 
       const minR = s>=5 ? 6 : 4;
       const maxR = s>=7 ? 22 : s>=4 ? 16 : 10;
-      const radius = Phaser.Math.Between(minR, maxR);
-      const speed  = Phaser.Math.FloatBetween(14, 32 + s*2.76);
-      const angle  = Phaser.Math.FloatBetween(0, Math.PI*2);
+      const fy = Phaser.Math.Between(minR, maxR);
+      const gl  = Phaser.Math.FloatBetween(14, 32 + s*2.76);
+      const bv  = Phaser.Math.FloatBetween(0, Math.PI*2);
       const spin   = Phaser.Math.FloatBetween(-1.5, 1.5);
       const g = this.add.graphics().setDepth(3);
-      const ast = {x:ax, y:ay, vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed, radius, spin, rot:0, gfx:g, hp: Math.ceil(radius/4)};
+      const ast = {x:ax, y:ay, vx:Math.cos(bv)*gl, vy:Math.sin(bv)*gl, fy, spin, rot:0, gfx:g, hp: Math.ceil(fy/4)};
       this.drawAsteroid(ast);
-      this.asteroids.push(ast);
+      this.ft.push(ast);
     }
   }
 
   createPlanet(x,y,idx){
-    const colors = [0x3366cc,0x66aa33,0xcc6633,0x9933cc,0x33aacc,0xaa3366];
-    const color = colors[idx%colors.length];
-    const radius = Phaser.Math.Between(25,50);
-    const gravity = Phaser.Math.FloatBetween(40, 88) * (1 + this.sector * 0.0276);
-    const gravRadius = radius*4.5;
-    const hasResources = Math.random()>0.4;
-    const resourceType = ['fuel','energy','health'][Phaser.Math.Between(0,2)];
-    let resourceAmt = hasResources ? Phaser.Math.Between(20,60) : 0;
+    const bl = [0x3366cc,0x66aa33,0xcc6633,0x9933cc,0x33aacc,0xaa3366];
+    const color = bl[idx%bl.length];
+    const fy = Phaser.Math.Between(25,50);
+    const fe = Phaser.Math.FloatBetween(40, 88) * (1 + this.dy * 0.0276);
+    const ck = fy*4.5;
+    const ch = Math.random()>0.4;
+    const dz = ['fuel','energy','health'][Phaser.Math.Between(0,2)];
+    let eh = ch ? Phaser.Math.Between(20,60) : 0;
 
     const g = this.add.graphics();
     g.setDepth(1);
 
     g.fillStyle(color, 0.04);
-    g.fillCircle(x,y,gravRadius);
+    g.fillCircle(x,y,ck);
     g.lineStyle(1, color, 0.15);
-    g.strokeCircle(x,y,gravRadius);
+    g.strokeCircle(x,y,ck);
 
     g.fillStyle(color, 1);
-    g.fillCircle(x,y,radius);
+    g.fillCircle(x,y,fy);
 
     g.fillStyle(0xffffff,0.15);
-    g.fillCircle(x-radius*0.3, y-radius*0.3, radius*0.4);
+    g.fillCircle(x-fy*0.3, y-fy*0.3, fy*0.4);
 
     g.lineStyle(2, 0x000000, 0.5);
-    g.strokeCircle(x,y,radius);
+    g.strokeCircle(x,y,fy);
 
     let ring = null;
-    if(hasResources){
+    if(ch){
       ring = this.add.graphics().setDepth(2);
-      const rc = {fuel:0xffaa00, energy:0x00ffff, health:0x00ff44}[resourceType];
+      const rc = {fuel:0xffaa00, energy:0x00ffff, health:0x00ff44}[dz];
       ring.lineStyle(2, rc, 0.6);
-      ring.strokeCircle(x,y,radius+5);
+      ring.strokeCircle(x,y,fy+5);
     }
 
-    const label = this.add.text(x,y+radius+8, hasResources?resourceType.toUpperCase():'', {fontSize:'9px',fontFamily:'Courier New',color:'#aaaaaa'}).setOrigin(0.5).setDepth(3);
+    const bk = this.add.text(x,y+fy+8, ch?dz.toUpperCase():'', {fontSize:'9px',fontFamily:'Courier New',color:'#aaaaaa'}).setOrigin(0.5).setDepth(3);
 
-    this.planets.push({x,y,radius,gravity,gravRadius,color,hasResources,resourceType,resourceAmt,gfx:g,ring,label});
+    this.cm.push({x,y,fy,fe,ck,color,ch,dz,eh,gfx:g,ring,bk});
   }
 
-  createTower(planet, angle){
-    
-    const baseX = planet.x + Math.cos(angle) * planet.radius;
-    const baseY = planet.y + Math.sin(angle) * planet.radius;
-    
-    const antennaLen = 22;
-    const tipX = planet.x + Math.cos(angle) * (planet.radius + antennaLen);
-    const tipY = planet.y + Math.sin(angle) * (planet.radius + antennaLen);
+  createTower(dn, bv){
+    // Base sits exactly on dn surface, antenna points outward
+    const fo = dn.x + Math.cos(bv) * dn.fy;
+    const dc = dn.y + Math.sin(bv) * dn.fy;
+    // Tip position (antenna extends outward from surface)
+    const ew = 22;
+    const tipX = dn.x + Math.cos(bv) * (dn.fy + ew);
+    const tipY = dn.y + Math.sin(bv) * (dn.fy + ew);
 
     const g = this.add.graphics().setDepth(4);
     const beam = this.add.graphics().setDepth(3);
-    const timerBar = this.add.graphics().setDepth(5);
+    const fj = this.add.graphics().setDepth(5);
 
-    
-    const ix = planet.x + Math.cos(angle) * (planet.radius + 14);
-    const iy = planet.y + Math.sin(angle) * (planet.radius + 14);
+    // Store interaction point slightly above surface
+    const ix = dn.x + Math.cos(bv) * (dn.fy + 14);
+    const iy = dn.y + Math.sin(bv) * (dn.fy + 14);
 
-    const tower = {
-      x: ix, y: iy,          
-      baseX, baseY,           
-      tipX, tipY,             
-      angle,                  
-      planet, gfx:g, beam, timer:timerBar,
+    const ea = {
+      x: ix, y: iy,          // interaction/collision point
+      fo, dc,           // where it meets the dn
+      tipX, tipY,             // antenna tip
+      bv,                  // outward bv from dn center
+      dn, gfx:g, beam, timer:fj,
       active:false, activationProgress:0,
-      tickPhase: Math.random()*Math.PI*2  
+      tickPhase: Math.random()*Math.PI*2  // stagger blink timing
     };
-    this.drawTowerGfx(tower);
-    this.towers.push(tower);
+    this.drawTowerGfx(ea);
+    this.eg.push(ea);
   }
 
   drawTowerGfx(t){
     const g = t.gfx;
     g.clear();
-    const {baseX,baseY,tipX,tipY,angle,active} = t;
-    const dx = tipX-baseX, dy = tipY-baseY;
+    const {fo,dc,tipX,tipY,bv,active} = t;
+    const dx = tipX-fo, dy = tipY-dc;
     const len = Math.sqrt(dx*dx+dy*dy);
-    const nx = dx/len, ny = dy/len;   
-    const rx = -ny, ry = nx;          
+    const nx = dx/len, ny = dy/len;   // outward normal
+    const rx = -ny, ry = nx;          // tangent
 
-    
+    // Base plate (flat on dn surface)
     const bw = 7;
     g.fillStyle(0x445566, 1);
     g.fillTriangle(
-        baseX + rx*bw,  baseY + ry*bw,
-        baseX - rx*bw,  baseY - ry*bw,
-        baseX + nx*5,   baseY + ny*5
+      fo + rx*bw,  dc + ry*bw,
+      fo - rx*bw,  dc - ry*bw,
+      fo + nx*5,   dc + ny*5
     );
     g.lineStyle(1, 0x667788, 0.8);
     g.strokeTriangle(
-        baseX + rx*bw,  baseY + ry*bw,
-        baseX - rx*bw,  baseY - ry*bw,
-        baseX + nx*5,   baseY + ny*5
+      fo + rx*bw,  dc + ry*bw,
+      fo - rx*bw,  dc - ry*bw,
+      fo + nx*5,   dc + ny*5
     );
 
-    
-    const midX = baseX + nx*12, midY = baseY + ny*12;
+    // Main antenna shaft
+    const midX = fo + nx*12, midY = dc + ny*12;
     g.lineStyle(2, active ? 0x00cc88 : 0x556677, 1);
-    g.lineBetween(baseX+nx*4, baseY+ny*4, tipX, tipY);
+    g.lineBetween(fo+nx*4, dc+ny*4, tipX, tipY);
 
-    
-    const cbLen = 5;
+    // Cross-bar (horizontal strut)
+    const fw = 5;
     g.lineStyle(1, active ? 0x00aa66 : 0x445566, 0.9);
-    g.lineBetween(midX+rx*cbLen, midY+ry*cbLen, midX-rx*cbLen, midY-ry*cbLen);
+    g.lineBetween(midX+rx*fw, midY+ry*fw, midX-rx*fw, midY-ry*fw);
 
-    
-    const cb2X = baseX+nx*18, cb2Y = baseY+ny*18;
-    const cb2Len = 3;
+    // Second smaller cross-bar closer to tip
+    const cb2X = fo+nx*18, cb2Y = dc+ny*18;
+    const ap = 3;
     g.lineStyle(1, active ? 0x00aa66 : 0x445566, 0.7);
-    g.lineBetween(cb2X+rx*cb2Len, cb2Y+ry*cb2Len, cb2X-rx*cb2Len, cb2Y-ry*cb2Len);
+    g.lineBetween(cb2X+rx*ap, cb2Y+ry*ap, cb2X-rx*ap, cb2Y-ry*ap);
 
     if(!active){
-      
+      // Inactive: small dim bulb at tip
       g.fillStyle(0xffff00, 0.25);
       g.fillCircle(tipX, tipY, 3);
       g.lineStyle(1, 0x888800, 0.4);
       g.strokeCircle(tipX, tipY, 3);
     } else {
-      
+      // Active: gs glowing orb at tip
       g.fillStyle(0x00ffcc, 0.3);
       g.fillCircle(tipX, tipY, 8);
       g.fillStyle(0x00ffff, 0.9);
@@ -718,238 +782,200 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  drawFuelDepotGfx(g, x, y, level){
-    g.clear(); // visuals handled via emoji text
+  drawFuelDepotGfx(g, x, y, ez){
+    g.clear();
+
+    const bl = [0xffaa00, 0xff7700, 0xff3300];
+    const col = bl[Math.min(ez-1,2)];
+    const sz = 6 + ez*2;
+
+    g.fillStyle(col, 1);
+    g.fillRect(x-sz, y-sz-2, sz*2, sz*2+2);
+
+    g.fillStyle(0xffffff, 0.4);
+    g.fillRect(x-sz*0.6, y-sz-6, sz*1.2, 5);
+    g.lineStyle(1, 0x000000, 0.6);
+    g.strokeRect(x-sz, y-sz-2, sz*2, sz*2+2);
+
+    for(let i=0;i<ez;i++){
+      g.lineStyle(2, 0xffffff, 0.35);
+      g.lineBetween(x-sz+2, y-sz+4+i*5, x+sz-2, y-sz+4+i*5);
+    }
+
+    g.lineStyle(1+ez, col, 0.45);
+    g.strokeCircle(x, y, sz+8+ez*2);
+
+    if(ez>=3){
+      g.lineStyle(1, 0xff8800, 0.7);
+      g.strokeTriangle(x,y-sz-8, x-6,y-sz-2, x+6,y-sz-2);
+    }
   }
 
-
-  createFuelDepot(x, y, planet){
-    const level = Math.min(1 + Math.floor((this.sector-1)/2), 3);
-    const g = this.add.text(x, y, '\u26fd', {
-      fontSize: (18 + level*2) + 'px',
-      fontFamily: 'Courier New',
-      color: '#ffaa00',
-      stroke: '#553300',
-      strokeThickness: 2
-    }).setOrigin(0.5).setDepth(4);
-    const amount = 25 + level*15 + Phaser.Math.Between(0, 15);
-    const label = this.add.text(x, y + 20 + level*2, '+'+amount, {fontSize:'9px', fontFamily:'Courier New', color:'#ffaa00'}).setOrigin(0.5).setDepth(5);
-    this.fuelDepots = this.fuelDepots || [];
-    this.fuelDepots.push({x, y, gfx:g, label, amount, collected:false, level});
+  createFuelDepot(x, y, dn){
+    const ez = Math.min(1 + Math.floor((this.dy-1)/2), 3);
+    const g = this.add.graphics().setDepth(4);
+    const cy = 25 + ez*15 + Phaser.Math.Between(0, 15);
+    this.drawFuelDepotGfx(g, x, y, ez);
+    const bk = this.add.text(x, y + 22 + ez*2, `⛽ +${cy}`, {fontSize:'8px', fontFamily:'Courier New', color:'#ffaa00'}).setOrigin(0.5).setDepth(5);
+    this.dv = this.dv || [];
+    this.dv.push({x, y, gfx:g, bk, cy, collected:false, ez});
   }
 
   createWreck(x,y,type){
-    const curLvl = this.upgrades[type]||0;
-    const nextLvl = curLvl+1;
+    const gk = this.gy[type]||0;
+    const fb = gk+1;
     const g = this.add.graphics().setDepth(4);
 
-    const typeConf = {
+    const cn = {
       weapon:     {col:0xffdd00, col2:0xff8800},
       shield:     {col:0x44aaff, col2:0x0055ff},
       extraTank:  {col:0xff8800, col2:0xff4400},
       armor:{col:0x00ff88, col2:0x00aaff},
     };
-    const {col,col2} = typeConf[type]||{col:0xffa500,col2:0xff5500};
-    const sz = 7 + nextLvl*2;
+    const {col,col2} = cn[type]||{col:0xffa500,col2:0xff5500};
+    const sz = 7 + fb*2;
 
     g.lineStyle(2, col, 0.9);
     if(type==='weapon'){
 
       g.lineBetween(x-sz,y-sz,x+sz,y+sz);
       g.lineBetween(x+sz,y-sz,x-sz,y+sz);
-      for(let i=0;i<nextLvl;i++){
+      for(let i=0;i<fb;i++){
         g.fillStyle(col,0.7); g.fillCircle(x+(i-1)*6,y,3);
       }
     } else if(type==='extraTank'){
 
-      for(let i=0;i<nextLvl;i++){
-        const ox = (i-(nextLvl-1)/2)*9;
+      for(let i=0;i<fb;i++){
+        const ox = (i-(fb-1)/2)*9;
         g.fillStyle(col,0.7); g.fillRect(x+ox-3,y-sz+2,6,sz*2-4);
         g.fillStyle(col2,0.5); g.fillRect(x+ox-3,y-sz+2,6,4);
         g.lineStyle(1,col,0.9); g.strokeRect(x+ox-3,y-sz+2,6,sz*2-4);
       }
     } else {
-      
+      // HEALTH: wrench shape (mechanic key)
       g.fillStyle(col, 1);
-      
+      // Handle
       g.fillRect(x-2, y-sz+2, 4, sz*2-6);
-      
-      g.fillCircle(x, y-sz+4, 5+nextLvl);
+      // Head circle (socket part)
+      g.fillCircle(x, y-sz+4, 5+fb);
       g.fillStyle(0x000000, 0.5);
-      g.fillCircle(x, y-sz+4, 2+nextLvl*0.5);
-      
+      g.fillCircle(x, y-sz+4, 2+fb*0.5);
+      // Tail fork
       g.fillStyle(col, 1);
       g.fillRect(x-4, y+sz-8, 4, 6);
       g.fillRect(x, y+sz-8, 4, 6);
-      
+      // Outline
       g.lineStyle(1, col2, 0.8);
-      g.strokeCircle(x, y-sz+4, 5+nextLvl);
+      g.strokeCircle(x, y-sz+4, 5+fb);
       g.strokeRect(x-2, y-sz+2, 4, sz*2-6);
       g.lineStyle(1,col,0.3); g.strokeCircle(x,y,sz+4);
     }
 
     g.lineStyle(1,col,0.3); g.strokeCircle(x,y,sz+10);
-    const wlabel = curLvl>0 ? `${type.toUpperCase()} Lv${nextLvl}` : type.toUpperCase();
-    const label = this.add.text(x,y-sz-14,wlabel,{fontSize:'8px',fontFamily:'Courier New',color:'#'+col.toString(16).padStart(6,'0')}).setOrigin(0.5).setDepth(5);
-    this.wrecks.push({x,y,type,gfx:g,label,collected:false});
+    const ei = gk>0 ? `${type.toUpperCase()} Lv${fb}` : type.toUpperCase();
+    const bk = this.add.text(x,y-sz-14,ei,{fontSize:'8px',fontFamily:'Courier New',color:'#'+col.toString(16).padStart(6,'0')}).setOrigin(0.5).setDepth(5);
+    this.fd.push({x,y,type,gfx:g,bk,collected:false});
   }
 
   createEnemy(x,y){
 
-    
-    
-    
-    
-    
-    const maxType = this.sector>=7 ? 3 : this.sector>=5 ? 2 : this.sector>=3 ? 1 : 0;
-    const type = Phaser.Math.Between(0, maxType);
+    // Type progression:
+    // dy 1-2: type 0 (fighter, 1 shot)
+    // dy 3-4: type 0 or type 1 (double-shot fighter)
+    // dy 5-6: + type 2 (drone, rapid)
+    // dy 7+:  + type 3 (bomber, triple spread)
+    const ct = this.dy>=7 ? 3 : this.dy>=5 ? 2 : this.dy>=3 ? 1 : 0;
+    const type = Phaser.Math.Between(0, ct);
     const g = this.add.graphics().setDepth(6);
-    const hp = ([3,4,2,6][type]||3) + Math.ceil(this.sector*0.92);
+    const hp = ([3,4,2,6][type]||3) + Math.ceil(this.dy*0.92);
     const spd = type===2 ? 55 : 40;
-    this.drawEnemyShip(g,x,y,0,false,false,type,hp,hp);
-    this.enemies.push({
+    this.drawEnemyShip(g,x,y,0,false,false,type);
+    this.gx.push({
       x,y,
       vx:Phaser.Math.FloatBetween(-spd,spd),
       vy:Phaser.Math.FloatBetween(-spd,spd),
-      gfx:g, hp, maxHp:hp, fireTimer:0, state:'patrol', targetAngle:0,
+      gfx:g, hp, ca:0, state:'patrol', targetAngle:0,
       type,
     });
   }
-  createPlanetTurret(planet, angle){
-    const bx = planet.x + Math.cos(angle)*planet.radius;
-    const by = planet.y + Math.sin(angle)*planet.radius;
+  createPlanetTurret(dn, bv){
+    const bx = dn.x + Math.cos(bv)*dn.fy;
+    const by = dn.y + Math.sin(bv)*dn.fy;
     const g = this.add.graphics().setDepth(5);
-    const hp = 2 + Math.floor(this.sector*0.5);
-    const turret = { planet, angle, bx, by, gfx:g, hp, maxHp:hp, fireTimer: Math.random()*3, aimAngle:0 };
-    this.drawPlanetTurretGfx(turret, 0);
-    this.planetTurrets.push(turret);
+    const hp = 2 + Math.floor(this.dy*0.5);
+    const ah = { dn, bv, bx, by, gfx:g, hp, maxHp:hp, ca: Math.random()*3, af:0 };
+    this.drawPlanetTurretGfx(ah, 0);
+    this.gt.push(ah);
   }
 
-  drawPlanetTurretGfx(t, aimAngle){
+  drawPlanetTurretGfx(t, af){
     const g = t.gfx;
     g.clear();
-    const {bx,by,planet,angle} = t;
-    const nx = Math.cos(angle), ny = Math.sin(angle);
+    const {bx,by,dn,bv} = t;
+    const nx = Math.cos(bv), ny = Math.sin(bv);
     const rx = -ny, ry = nx;
-    const hpRatio = t.hp/t.maxHp;
-
-    
-    const baseCol  = hpRatio>0.6 ? 0xdd3300 : hpRatio>0.3 ? 0xff7700 : 0xff2200;
-    const glowCol  = hpRatio>0.6 ? 0xff4400 : hpRatio>0.3 ? 0xffaa00 : 0xff6600;
-    const darkCol  = 0x1a0800;
-
-    
-    const hw = 10, hd = 6;
-    const pts = [];
-    for(let i=0;i<6;i++){
-      const a = (i/6)*Math.PI*2 + angle;
-      const sx2 = hw * Math.cos(a), sy2 = hd * Math.sin(a);
-      
-      pts.push({ x: bx + rx*sx2 + nx*sy2*0.4, y: by + ry*sx2 + ny*sy2*0.4 });
-    }
-    g.fillStyle(0x2a1500,1);
-    g.beginPath(); g.moveTo(pts[0].x,pts[0].y);
-    for(let i=1;i<pts.length;i++) g.lineTo(pts[i].x,pts[i].y);
-    g.closePath(); g.fillPath();
-    g.lineStyle(1, baseCol, 0.7);
-    g.beginPath(); g.moveTo(pts[0].x,pts[0].y);
-    for(let i=1;i<pts.length;i++) g.lineTo(pts[i].x,pts[i].y);
-    g.closePath(); g.strokePath();
-
-    
-    const strutBase = { x: bx + nx*2,  y: by + ny*2  };
-    const strutTop  = { x: bx + nx*10, y: by + ny*10 };
-    g.lineStyle(4, darkCol, 1);
-    g.lineBetween(strutBase.x, strutBase.y, strutTop.x, strutTop.y);
-    g.lineStyle(2, baseCol, 0.5);
-    g.lineBetween(strutBase.x, strutBase.y, strutTop.x, strutTop.y);
-
-    
-    const tx = bx + nx*12, ty = by + ny*12;
-    g.fillStyle(darkCol,1);       g.fillCircle(tx,ty,9);
-    g.fillStyle(baseCol,0.9);     g.fillCircle(tx,ty,7);
-    g.lineStyle(2, glowCol, 0.8); g.strokeCircle(tx,ty,7);
-    
-    g.lineStyle(1, 0xffffff, 0.15); g.strokeCircle(tx,ty,4);
-
-    
-    const barLen = 14;
-    const offsets = [-2.5, 2.5];
-    offsets.forEach(off => {
-      const bsx = tx + rx*off, bsy = ty + ry*off;
-      const bex = bsx + Math.cos(aimAngle)*barLen, bey = bsy + Math.sin(aimAngle)*barLen;
-      
-      g.lineStyle(4, darkCol, 1);   g.lineBetween(bsx,bsy,bex,bey);
-      g.lineStyle(2, baseCol, 1);   g.lineBetween(bsx,bsy,bex,bey);
-      
-      g.fillStyle(glowCol,1);
-      g.fillCircle(bex, bey, 2.5);
-    });
-    
-    const bridgeX = tx + Math.cos(aimAngle)*6, bridgeY = ty + Math.sin(aimAngle)*6;
-    g.lineStyle(3, baseCol, 0.7);
-    g.lineBetween(bridgeX + rx*2.5, bridgeY + ry*2.5, bridgeX - rx*2.5, bridgeY - ry*2.5);
-
-    
-    const pulse = 0.5 + 0.5*Math.sin(Date.now()/200 + t.angle*10);
-    const lightCol = hpRatio>0.6 ? 0x00ff88 : hpRatio>0.3 ? 0xffcc00 : 0xff2200;
-    g.fillStyle(lightCol, 0.4 + 0.6*pulse);
-    g.fillCircle(tx + rx*5, ty + ry*5, 2.5);
-    g.lineStyle(1, lightCol, pulse);
-    g.strokeCircle(tx + rx*5, ty + ry*5, 3.5);
-
-    
-    const bw=28, bh=4;
-    const barX = tx - bw/2, barY = ty - 20;
-    
-    g.fillStyle(0x1a0000,1);     g.fillRect(barX, barY, bw, bh);
-    g.fillStyle(baseCol, 1);     g.fillRect(barX, barY, bw*hpRatio, bh);
-    
-    g.fillStyle(0xffffff, 0.15); g.fillRect(barX, barY, bw*hpRatio, 2);
-    g.lineStyle(1, glowCol, 0.6);g.strokeRect(barX, barY, bw, bh);
-    
-    for(let p=1;p<t.maxHp;p++){
-      const pipX = barX + (bw/t.maxHp)*p;
-      g.lineStyle(1, darkCol, 0.8); g.lineBetween(pipX, barY, pipX, barY+bh);
-    }
+    const bm = t.hp/t.maxHp;
+    const bf = bm>0.6 ? 0xcc2200 : bm>0.3 ? 0xff6600 : 0xff9900;
+    // Base pad
+    g.fillStyle(0x331100,1);
+    g.fillTriangle(bx+rx*8,by+ry*8, bx-rx*8,by-ry*8, bx+nx*6,by+ny*6);
+    g.lineStyle(1,bf,0.8);
+    g.strokeTriangle(bx+rx*8,by+ry*8, bx-rx*8,by-ry*8, bx+nx*6,by+ny*6);
+    // Turret body (rotates to aim)
+    const tx = bx+nx*8, ty = by+ny*8;
+    g.fillStyle(bf,1);
+    g.fillCircle(tx,ty,7);
+    g.lineStyle(1,0xff4400,0.6);
+    g.strokeCircle(tx,ty,7);
+    // Barrel (points toward aim bv)
+    const ej = 12;
+    g.lineStyle(3, bf, 1);
+    g.lineBetween(tx, ty, tx+Math.cos(af)*ej, ty+Math.sin(af)*ej);
+    g.lineStyle(1,0xff8800,0.5);
+    g.lineBetween(tx, ty, tx+Math.cos(af)*ej, ty+Math.sin(af)*ej);
+    // HP bar
+    const bw=20, bh=3;
+    g.fillStyle(0x330000,1); g.fillRect(tx-bw/2, ty-14, bw, bh);
+    g.fillStyle(bf,1);  g.fillRect(tx-bw/2, ty-14, bw*bm, bh);
+    g.lineStyle(1,0xff2200,0.5); g.strokeRect(tx-bw/2,ty-14,bw,bh);
   }
 
   updatePlanetTurrets(dt){
-    for(let i=this.planetTurrets.length-1;i>=0;i--){
-      const t = this.planetTurrets[i];
-      const tx = t.bx + Math.cos(t.angle)*8;
-      const ty = t.by + Math.sin(t.angle)*8;
-      const toShip = angleTo(tx,ty,this.ship.x,this.ship.y);
-      
-      let da = toShip - t.aimAngle;
+    for(let i=this.gt.length-1;i>=0;i--){
+      const t = this.gt[i];
+      const tx = t.bx + Math.cos(t.bv)*8;
+      const ty = t.by + Math.sin(t.bv)*8;
+      const hb = gr(tx,ty,this.ship.x,this.ship.y);
+      // Smoothly rotate barrel toward ship
+      let da = hb - t.af;
       while(da> Math.PI) da-=Math.PI*2;
       while(da<-Math.PI) da+=Math.PI*2;
-      t.aimAngle += da * Math.min(1, dt*2.5);
-      this.drawPlanetTurretGfx(t, t.aimAngle);
-      
+      t.af += da * Math.min(1, dt*2.5);
+      this.drawPlanetTurretGfx(t, t.af);
+      // Fire at player if in range and has line of sight
       const ds = dist(tx,ty,this.ship.x,this.ship.y);
-      const fireRate = 2.5 - Math.min(1.5, this.sector*0.15);
-      t.fireTimer -= dt;
-      if(t.fireTimer<=0 && ds<280 && !this.ship.landed &&
-          hasLineOfSight(tx,ty,this.ship.x,this.ship.y,this.planets)){
-        t.fireTimer = fireRate;
+      const di = 2.5 - Math.min(1.5, this.dy*0.15);
+      t.ca -= dt;
+      if(t.ca<=0 && ds<280 && !this.ship.landed &&
+         dk(tx,ty,this.ship.x,this.ship.y,this.cm)){
+        t.ca = di;
         const spd = 200;
         const g2 = this.add.graphics().setDepth(8);
         g2.fillStyle(0xff2200,1); g2.fillCircle(0,0,4);
         g2.fillStyle(0xff8800,0.5); g2.fillCircle(0,0,7);
         g2.x=tx; g2.y=ty;
-        this.enemyBullets.push({x:tx,y:ty,vx:Math.cos(t.aimAngle)*spd,vy:Math.sin(t.aimAngle)*spd,gfx:g2,life:3});
+        this.co.push({x:tx,y:ty,vx:Math.cos(t.af)*spd,vy:Math.sin(t.af)*spd,gfx:g2,life:3});
       }
     }
   }
 
-  drawEnemyShip(g,x,y,angle,alerted,canSee,type=0,hp=1,maxHp=1){
+  drawEnemyShip(g,x,y,bv,eb,cd,type=0){
     g.clear();
 
-    if(alerted){
-      const indCol = canSee ? 0xff2200 : 0xff9900;
-      const pulse = 0.5+0.5*Math.sin(this.time.now/150);
-      g.fillStyle(indCol, 0.6+0.4*pulse);
+    if(eb){
+      const bg = cd ? 0xff2200 : 0xff9900;
+      const ef = 0.5+0.5*Math.sin(this.time.now/150);
+      g.fillStyle(bg, 0.6+0.4*ef);
       g.fillTriangle(x,y-22, x-5,y-13, x+5,y-13);
       g.fillStyle(0xffffff,1);
       g.fillRect(x-1,y-20,2,5);
@@ -957,20 +983,20 @@ class GameScene extends Phaser.Scene {
     }
     g.save();
     g.translateCanvas(x,y);
-    g.rotateCanvas(angle);
+    g.rotateCanvas(bv);
 
     if(type===0){
-      
-      const bc = alerted ? 0xff1100 : 0xff3333;
+      // FIGHTER: red triangle — 1 shot
+      const bc = eb ? 0xff1100 : 0xff3333;
       g.fillStyle(bc,1);
       g.fillTriangle(14,0,-8,-7,-8,7);
       g.lineStyle(1,0xff8888,1);
       g.strokeTriangle(14,0,-8,-7,-8,7);
-      g.fillStyle(alerted?0xff8800:0xff6600,0.8);
+      g.fillStyle(eb?0xff8800:0xff6600,0.8);
       g.fillCircle(0,0,4);
     } else if(type===1){
-      
-      const bc = alerted ? 0xff6600 : 0xff8800;
+      // DOUBLE FIGHTER: orange twin-hull — 2 shots spread
+      const bc = eb ? 0xff6600 : 0xff8800;
       g.fillStyle(bc,1);
       g.fillTriangle(13,-4,-7,-9,-7,0);
       g.fillTriangle(13, 4,-7, 0,-7,9);
@@ -979,8 +1005,8 @@ class GameScene extends Phaser.Scene {
       g.strokeTriangle(13, 4,-7, 0,-7,9);
       g.fillStyle(0xffff88,0.7); g.fillRect(10,-5,5,2); g.fillRect(10,3,5,2);
     } else if(type===2){
-      
-      const bc = alerted ? 0x00ffcc : 0x00aaaa;
+      // DRONE: cyan circle — rapid single
+      const bc = eb ? 0x00ffcc : 0x00aaaa;
       g.fillStyle(bc,0.9); g.fillCircle(0,0,9);
       g.lineStyle(2,0x00ffff,0.8); g.strokeCircle(0,0,9);
       g.fillStyle(0x000022,0.8); g.fillCircle(0,0,4);
@@ -988,8 +1014,8 @@ class GameScene extends Phaser.Scene {
       g.lineBetween(-12,0,-9,0); g.lineBetween(9,0,12,0);
       g.lineBetween(0,-12,0,-9); g.lineBetween(0,9,0,12);
     } else {
-      
-      const bc = alerted ? 0xcc00ff : 0x9900cc;
+      // BOMBER (type 3): purple diamond — triple spread, slow+tanky
+      const bc = eb ? 0xcc00ff : 0x9900cc;
       g.fillStyle(bc,1);
       g.fillTriangle(0,-13, 13,0, 0,13);
       g.fillTriangle(0,-13,-13,0, 0,13);
@@ -1000,46 +1026,35 @@ class GameScene extends Phaser.Scene {
       g.fillStyle(bc,0.8); g.fillRect(-3,-16,6,4); g.fillRect(-3,12,6,4);
     }
     g.restore();
-
-    
-    const hpRatio = Math.max(0, hp/maxHp);
-    const bw=24, bh=3;
-    const barX = x - bw/2, barY = y - 26;
-    const hpCol = hpRatio>0.6 ? 0x00ff44 : hpRatio>0.3 ? 0xffaa00 : 0xff3300;
-    g.fillStyle(0x111111,0.8); g.fillRect(barX-1, barY-1, bw+2, bh+2);
-    g.fillStyle(0x001100,1);   g.fillRect(barX, barY, bw, bh);
-    g.fillStyle(hpCol,1);      g.fillRect(barX, barY, bw*hpRatio, bh);
-    g.fillStyle(0xffffff,0.2); g.fillRect(barX, barY, bw*hpRatio, 1);
-    g.lineStyle(1, hpCol, 0.5);g.strokeRect(barX, barY, bw, bh);
   }
 
   findSafeSpawn(){
 
     let bx = W/2, by = H/2, bestScore = -1;
-    for(let attempt=0; attempt<300; attempt++){
+    for(let cs=0; cs<300; cs++){
       const tx = Phaser.Math.Between(60, W-60);
       const ty = Phaser.Math.Between(60, H-60);
 
-      let minPlanetDist = 9999;
-      for(const p of this.planets){
-        const d = dist(tx,ty,p.x,p.y) - p.radius;
-        if(d < minPlanetDist) minPlanetDist = d;
+      let dt = 9999;
+      for(const p of this.cm){
+        const d = dist(tx,ty,p.x,p.y) - p.fy;
+        if(d < dt) dt = d;
       }
 
-      let minEnemyDist = 9999;
-      for(const e of (this.enemies||[])){
+      let az = 9999;
+      for(const e of (this.gx||[])){
         const d = dist(tx,ty,e.x,e.y);
-        if(d < minEnemyDist) minEnemyDist = d;
+        if(d < az) az = d;
       }
 
-      if(minPlanetDist < 70) continue;
+      if(dt < 70) continue;
 
-      const score = Math.min(minPlanetDist, 300) + Math.min(minEnemyDist, 300)*0.8;
-      if(score > bestScore){
-        bestScore = score;
+      const cj = Math.min(dt, 300) + Math.min(az, 300)*0.8;
+      if(cj > bestScore){
+        bestScore = cj;
         bx = tx; by = ty;
 
-        if(minPlanetDist > 120 && minEnemyDist > 200) break;
+        if(dt > 120 && az > 200) break;
       }
     }
     return {x: bx, y: by};
@@ -1049,30 +1064,30 @@ class GameScene extends Phaser.Scene {
     this.ship = {
       x: W/2, y: H/2,
       vx: 0, vy: 0,
-      angle: 0,
+      bv: 0,
       fuel: 100,
       energy: 100,
       health: 100,
       landed: false,
       landedPlanet: null,
-      thrusting: false
+      dx: false
     };
-    this.shipGfx = this.add.graphics().setDepth(10);
-    this.thrustGfx = this.add.graphics().setDepth(9);
+    this.gd = this.add.graphics().setDepth(10);
+    this.db = this.add.graphics().setDepth(9);
 
-    const spawn = this.findSafeSpawn();
-    this.ship.x = spawn.x;
-    this.ship.y = spawn.y;
+    const bd = this.findSafeSpawn();
+    this.ship.x = bd.x;
+    this.ship.y = bd.y;
     this.drawShip();
   }
 
   drawShip(){
-    const {x,y,angle,health} = this.ship;
-    const sg = this.shipGfx;
+    const {x,y,bv,health} = this.ship;
+    const sg = this.gd;
     sg.clear();
     sg.save();
     sg.translateCanvas(x,y);
-    sg.rotateCanvas(angle);
+    sg.rotateCanvas(bv);
 
     const col = health>50?0x00ccff:health>25?0xffaa00:0xff4400;
     sg.fillStyle(col,1);
@@ -1088,7 +1103,7 @@ class GameScene extends Phaser.Scene {
     sg.fillTriangle(-2,6,-10,12,-10,0);
 
 
-    const wlv = this.upgrades.weapon||0;
+    const wlv = this.gy.weapon||0;
     if(wlv>=1){
 
       sg.fillStyle(0xffdd00,1);
@@ -1106,13 +1121,13 @@ class GameScene extends Phaser.Scene {
   }
 
   drawThrust(){
-    const tg = this.thrustGfx;
+    const tg = this.db;
     tg.clear();
-    if(!this.ship.thrusting || this.ship.landed || this.ship.fuel<=0) return;
-    const {x,y,angle} = this.ship;
+    if(!this.ship.dx || this.ship.landed || this.ship.fuel<=0) return;
+    const {x,y,bv} = this.ship;
     tg.save();
     tg.translateCanvas(x,y);
-    tg.rotateCanvas(angle);
+    tg.rotateCanvas(bv);
     tg.fillStyle(0xff6600, Phaser.Math.FloatBetween(0.5,1));
     tg.fillTriangle(-8,0,-18,-4,-18,4);
     tg.fillStyle(0xffff00,0.6);
@@ -1121,160 +1136,147 @@ class GameScene extends Phaser.Scene {
   }
 
   createInput(){
-    
     this.keys = this.input.keyboard.addKeys({
-      up:    Phaser.Input.Keyboard.KeyCodes.UP,
-      down:  Phaser.Input.Keyboard.KeyCodes.DOWN,
-      left:  Phaser.Input.Keyboard.KeyCodes.LEFT,
+      up: Phaser.Input.Keyboard.KeyCodes.UP,
+      down: Phaser.Input.Keyboard.KeyCodes.DOWN,
+      left: Phaser.Input.Keyboard.KeyCodes.LEFT,
       right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
-      w:     Phaser.Input.Keyboard.KeyCodes.W,
-      a:     Phaser.Input.Keyboard.KeyCodes.A,
-      s:     Phaser.Input.Keyboard.KeyCodes.S,
-      d:     Phaser.Input.Keyboard.KeyCodes.D,
+      w: Phaser.Input.Keyboard.KeyCodes.W,
+      a: Phaser.Input.Keyboard.KeyCodes.A,
+      s: Phaser.Input.Keyboard.KeyCodes.S,
+      d: Phaser.Input.Keyboard.KeyCodes.D,
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      fire:  Phaser.Input.Keyboard.KeyCodes.K,
+      fire: Phaser.Input.Keyboard.KeyCodes.F,
+      ctrl: Phaser.Input.Keyboard.KeyCodes.CTRL,
+      shift: Phaser.Input.Keyboard.KeyCodes.SHIFT
     });
+    this.ca = 0;
 
-    
-    this._arcade = { up:false, down:false, left:false, right:false, fire:false, brake:false };
-    const arcadeMap = {
-      'P1U':'up', 'P1D':'down', 'P1L':'left', 'P1R':'right',
-      'P1A':'fire', 'P1B':'fire', 'P1C':'fire',
-      'P1X':'brake','P1Y':'brake','P1Z':'brake',
-    };
-    this.input.keyboard.on('keydown', e => {
-      if(arcadeMap[e.key]) this._arcade[arcadeMap[e.key]] = true;
-    });
-    this.input.keyboard.on('keyup', e => {
-      if(arcadeMap[e.key]) this._arcade[arcadeMap[e.key]] = false;
-    });
-
-    this.fireTimer = 0;
-    this.input.on('pointerdown', ()=>{ this._clickFire = true; });
-    this.input.on('pointerup',   ()=>{ this._clickFire = false; });
+    this.input.on('pointerdown', ()=>{ this.ds = true; });
+    this.input.on('pointerup',   ()=>{ this.ds = false; });
   }
 
   createUI(){
-    if(this.uiGfx) this.uiGfx.destroy();
-    if(this.uiTexts) this.uiTexts.forEach(t=>t.destroy());
-    if(this.upgradePanel) this.upgradePanel.destroy();
-    if(this._panelTitle) this._panelTitle.destroy();
-    if(this.upgradeIcons) Object.values(this.upgradeIcons).forEach(ic=>{ ic.ico.destroy(); ic.lbl.destroy(); if(ic.stars) ic.stars.destroy(); });
-    if(this.barLabels){ this.barLabels.forEach(l=>l.destroy()); this.barLabels=null; }
-    if(this._barVals){ this._barVals.forEach(l=>l.destroy()); this._barVals=null; }
+    if(this.bq) this.bq.destroy();
+    if(this.dl) this.dl.forEach(t=>t.destroy());
+    if(this.fl) this.fl.destroy();
+    if(this.dr) this.dr.destroy();
+    if(this.dp) Object.values(this.dp).forEach(ic=>{ ic.ico.destroy(); ic.lbl.destroy(); if(ic.cf) ic.cf.destroy(); });
+    if(this.ak){ this.ak.forEach(l=>l.destroy()); this.ak=null; }
+    if(this.et){ this.et.forEach(l=>l.destroy()); this.et=null; }
 
-    this.uiGfx = this.add.graphics().setDepth(20);
-    this.uiTexts = [];
+    this.bq = this.add.graphics().setDepth(20);
+    this.dl = [];
 
-    
-    this.scoreText  = this.add.text(10, 10, 'SCORE: 0',   {fontSize:'12px',fontFamily:'Courier New',color:'#aaddff'}).setDepth(20);
-    this.sectorText = this.add.text(10, 26, 'SECTOR: 1',  {fontSize:'12px',fontFamily:'Courier New',color:'#aaddff'}).setDepth(20);
-    this.towersText = this.add.text(10, 42, 'TOWERS: 0/0',{fontSize:'12px',fontFamily:'Courier New',color:'#ffff88'}).setDepth(20);
+    // Top-left: cj, dy, eg
+    this.cw  = this.add.text(10, 10, 'SCORE: 0',   {fontSize:'12px',fontFamily:'Courier New',color:'#aaddff'}).setDepth(20);
+    this.bt = this.add.text(10, 26, 'SECTOR: 1',  {fontSize:'12px',fontFamily:'Courier New',color:'#aaddff'}).setDepth(20);
+    this.fp = this.add.text(10, 42, 'TORRES: 0/0',{fontSize:'12px',fontFamily:'Courier New',color:'#ffff88'}).setDepth(20);
 
-    
-    this.msgText = this.add.text(W/2, H-22, '', {fontSize:'13px',fontFamily:'Courier New',color:'#ffff00',stroke:'#333300',strokeThickness:2}).setOrigin(0.5).setDepth(20);
+    // Bottom-center: messages
+    this.fa = this.add.text(W/2, H-22, '', {fontSize:'13px',fontFamily:'Courier New',color:'#ffff00',stroke:'#333300',strokeThickness:2}).setOrigin(0.5).setDepth(20);
 
-    this.uiTexts = [this.scoreText, this.sectorText, this.towersText, this.msgText];
+    this.dl = [this.cw, this.bt, this.fp, this.fa];
 
-    
-    this.upgradePanel = this.add.graphics().setDepth(20);
-    this.upgradeIcons = {};
-    const upgDefs = [
-      { key:'weapon',    icon:'⚡', label:'WEAPON',   color:'#ffdd00' },
-      { key:'extraTank', icon:'⛽', label:'TANK', color:'#ff8800' },
+    // Bottom-right: upgrade modules panel (weapon + extraTank only)
+    this.fl = this.add.graphics().setDepth(20);
+    this.dp = {};
+    const aa = [
+      { key:'weapon',    icon:'⚡', bk:'ARMA',   color:'#ffdd00' },
+      { key:'extraTank', icon:'⛽', bk:'TANQUE', color:'#ff8800' },
     ];
-    this._upgDefs = upgDefs;
+    this.ff = aa;
 
-    
-    this._panelTitle = this.add.text(W-8, H-86, 'MODULES', {
+    // Panel gj
+    this.dr = this.add.text(W-8, H-86, 'MÓDULOS', {
       fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:2
     }).setOrigin(1, 0.5).setDepth(22);
 
-    upgDefs.forEach((u, i) => {
-      const ux = W - 90 + i * 46;  
+    aa.forEach((u, i) => {
+      const ux = W - 90 + i * 46;  // two slots side by side, bottom-right
       const uy = H - 60;
       const ico   = this.add.text(ux, uy,    u.icon,  {fontSize:'18px'}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
-      const lbl   = this.add.text(ux, uy+16, u.label, {fontSize:'7px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
-      const stars = this.add.text(ux, uy-14, '○○○',   {fontSize:'8px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
-      this.upgradeIcons[u.key] = {ico, lbl, stars, color:u.color, ux, uy};
+      const lbl   = this.add.text(ux, uy+16, u.bk, {fontSize:'7px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
+      const cf = this.add.text(ux, uy-14, '○○○',   {fontSize:'8px',fontFamily:'Courier New',color:u.color}).setOrigin(0.5).setDepth(22).setAlpha(0.2);
+      this.dp[u.key] = {ico, lbl, cf, color:u.color, ux, uy};
     });
   }
 
   updateUI(){
     const s = this.ship;
-    const g = this.uiGfx;
+    const g = this.bq;
     g.clear();
 
-    
-    
+    // ── Bottom-left resource bars ──────────────────────────────
+    // Layout: icon | bar | value, stacked vertically
     const bx = 10, bw = 100, bh = 7, gap = 14;
-    const maxFuel = 100 + (this.upgrades.extraTank||0)*15;
+    const dw = 100 + (this.gy.extraTank||0)*15;
 
     const bars = [
-      { label:'FUEL', val:s.fuel,   max:maxFuel, fill:0xffaa00, bg:0x332200, border:0x664400 },
-      { label:'ENRG', val:s.energy, max:100,     fill:0x00ddff, bg:0x002233, border:0x005566 },
-      { label:'HP', val:s.health, max:100,
+      { bk:'FUEL', val:s.fuel,   max:dw, fill:0xffaa00, bg:0x332200, border:0x664400 },
+      { bk:'ENRG', val:s.energy, max:100,     fill:0x00ddff, bg:0x002233, border:0x005566 },
+      { bk:'VIDA', val:s.health, max:100,
         fill: s.health>50 ? 0x00ff44 : s.health>25 ? 0xffaa00 : 0xff3300,
         bg:0x220000, border:0x550000 },
     ];
 
-    
+    // Semi-transparent backing for bar area
     g.fillStyle(0x000000, 0.45);
     g.fillRoundedRect(bx-4, H-66, bw+70, 58, 4);
 
     bars.forEach((b, i) => {
       const by = H - 58 + i * gap;
-      const ratio = Math.min(1, b.val / b.max);
+      const br = Math.min(1, b.val / b.max);
       g.fillStyle(b.bg, 1);    g.fillRect(bx+28, by, bw, bh);
-      g.fillStyle(b.fill, 1);  g.fillRect(bx+28, by, bw*ratio, bh);
+      g.fillStyle(b.fill, 1);  g.fillRect(bx+28, by, bw*br, bh);
       g.lineStyle(1, b.border, 1); g.strokeRect(bx+28, by, bw, bh);
     });
 
-    this.scoreText.setText(`SCORE: ${this.score}`);
-    this.sectorText.setText(`SECTOR: ${this.sector}`);
-    this.towersText.setText(`TOWERS: ${this.activeTowers}/${this.towers.length}`);
+    this.cw.setText(`SCORE: ${this.cj}`);
+    this.bt.setText(`SECTOR: ${this.dy}`);
+    this.fp.setText(`TORRES: ${this.an}/${this.eg.length}`);
 
-    if(!this.barLabels){
-      this.barLabels = [
+    if(!this.ak){
+      this.ak = [
         this.add.text(bx, H-59, 'FUEL', {fontSize:'7px',fontFamily:'Courier New',color:'#ffaa00'}).setDepth(21),
         this.add.text(bx, H-59+gap, 'ENRG', {fontSize:'7px',fontFamily:'Courier New',color:'#00ddff'}).setDepth(21),
-        this.add.text(bx, H-59+gap*2, 'HP', {fontSize:'7px',fontFamily:'Courier New',color:'#00ff44'}).setDepth(21),
+        this.add.text(bx, H-59+gap*2, 'VIDA', {fontSize:'7px',fontFamily:'Courier New',color:'#00ff44'}).setDepth(21),
       ];
-      
-      this._barVals = [
+      // numeric values as dynamic texts
+      this.et = [
         this.add.text(bx+132, H-59,       '', {fontSize:'7px',fontFamily:'Courier New',color:'#ffaa00'}).setDepth(21),
         this.add.text(bx+132, H-59+gap,   '', {fontSize:'7px',fontFamily:'Courier New',color:'#00ddff'}).setDepth(21),
         this.add.text(bx+132, H-59+gap*2, '', {fontSize:'7px',fontFamily:'Courier New',color:'#00ff44'}).setDepth(21),
       ];
     }
-    
-    if(this._barVals){
-      this._barVals[0].setText(Math.ceil(s.fuel)+'/'+maxFuel);
-      this._barVals[1].setText(Math.ceil(s.energy)+'/100');
-      this._barVals[2].setText(Math.ceil(s.health)+'/100');
+    // Update numeric values
+    if(this.et){
+      this.et[0].setText(Math.ceil(s.fuel)+'/'+dw);
+      this.et[1].setText(Math.ceil(s.energy)+'/100');
+      this.et[2].setText(Math.ceil(s.health)+'/100');
     }
 
-    
-    const pg = this.upgradePanel;
+    // ── Bottom-right upgrade panel ─────────────────────────────
+    const pg = this.fl;
     pg.clear();
-    const hasAny = (this.upgrades.weapon||0)+(this.upgrades.extraTank||0) > 0;
+    const df = (this.gy.weapon||0)+(this.gy.extraTank||0) > 0;
 
-    
+    // Panel backing
     pg.fillStyle(0x000000, 0.45);
     pg.fillRoundedRect(W-110, H-80, 104, 72, 4);
     pg.lineStyle(1, 0x223344, 0.8);
     pg.strokeRoundedRect(W-110, H-80, 104, 72, 4);
 
-    this._upgDefs.forEach(u => {
-      const lvl = this.upgrades[u.key] || 0;
-      const ic  = this.upgradeIcons[u.key];
+    this.ff.forEach(u => {
+      const lvl = this.gy[u.key] || 0;
+      const ic  = this.dp[u.key];
       const alpha = lvl > 0 ? 1 : 0.22;
       ic.ico.setAlpha(alpha);
       ic.lbl.setAlpha(alpha);
 
-      
-      const starStr = '●'.repeat(lvl) + '○'.repeat(3-lvl);
-      ic.stars.setText(starStr).setAlpha(alpha);
+      // Stars: filled vs bj
+      const bp = '●'.repeat(lvl) + '○'.repeat(3-lvl);
+      ic.cf.setText(bp).setAlpha(alpha);
 
       const hx = parseInt(u.color.replace('#','0x'));
       if(lvl > 0){
@@ -1285,44 +1287,38 @@ class GameScene extends Phaser.Scene {
   }
 
   startTutorial(){
-    if(this.sector!==1) return;
+    if(this.dy!==1) return;
     const msgs = [
-      { t:1000,  txt:'USE WASD / ARROWS to thrust and rotate the ship',  dur:3500 },
-      { t:5000,  txt:'Land near antennas to activate them (2s)', dur:3800 },
-      { t:9500,  txt:'Activate ALL antennas in the sector',                dur:3200 },
-      { t:13500, txt:'A BLACK HOLE appears — enter it to advance!', dur:3800 },
-      { t:18000, txt:'Collect floating debris to upgrade your ship',        dur:3200 },
-      { t:22000, txt:'Land on planets to recharge fuel and energy', dur:3500 },
-      { t:26000, txt:'Got a weapon? Press K to shoot and defend yourself from turrets and enemies', dur:4200 },
+      { t:1000,  txt:'⬆ USA WASD / FLECHAS para propulsar y rotar la nave',  dur:3500 },
+      { t:5000,  txt:'📡 Aterriza cerca de las antenas para activarlas (2 seg)', dur:3800 },
+      { t:9500,  txt:'⚡ Activa TODAS las antenas del dy',                dur:3200 },
+      { t:13500, txt:'🌀 Luego aparece un AGUJERO NEGRO — ¡entra para avanzar!', dur:3800 },
+      { t:18000, txt:'🔧 Recoge restos flotantes para mejorar tu nave',        dur:3200 },
+      { t:22000, txt:'⛽ Aterriza en planetas para recargar combustible y energía', dur:3500 },
     ];
     msgs.forEach(m=>{
       this.time.delayedCall(m.t, ()=>{
-        if(this.sector===1) this.showMsg(m.txt, m.dur);
+        if(this.dy===1) this.showMsg(m.txt, m.dur);
       });
     });
   }
 
   showMsg(txt, duration=2000){
-    this.msgText.setText(txt);
-    if(this._msgTimer) clearTimeout(this._msgTimer);
-    this._msgTimer = setTimeout(()=>this.msgText.setText(''), duration);
+    this.fa.setText(txt);
+    if(this.fv) clearTimeout(this.fv);
+    this.fv = setTimeout(()=>this.fa.setText(''), duration);
   }
 
-  showUpgradePopup(type, level=1){
-    const names = {weapon:'ARMAMENT', extraTank:'EXTRA TANK', health:'HEALTH'};
-    const stars = '★'.repeat(level)+'☆'.repeat(3-level);
-    this.showMsg(`✦ ${names[type]||type}  ${stars}  ACQUIRED`, 2500);
-    if(type==='weapon'){
-      this.time.delayedCall(2600, ()=>{
-        this.showMsg('⚡ Press K to shoot!', 3000);
-      });
-    }
-    this.score += 50;
+  showUpgradePopup(type, ez=1){
+    const ed = {weapon:'ARMAMENTO', extraTank:'TANQUE EXTRA', health:'SALUD'};
+    const cf = '★'.repeat(ez)+'☆'.repeat(3-ez);
+    this.showMsg(`✦ ${ed[type]||type}  ${cf}  ADQUIRIDO`, 2500);
+    this.cj += 50;
   }
 
-  update(time, delta){
-    if(this.sectorTransition) return;
-    const dt = delta/1000;
+  update(time, bn){
+    if(this.de) return;
+    const dt = bn/1000;
     this.updateShip(dt);
     this.updateTowers(dt);
     this.updateAsteroids(dt);
@@ -1333,36 +1329,32 @@ class GameScene extends Phaser.Scene {
     this.updateUI();
     this.drawShip();
     this.drawThrust();
-    this.fireTimer = Math.max(0, this.fireTimer-dt);
+    this.ca = Math.max(0, this.ca-dt);
   }
 
   updateShip(dt){
     const s = this.ship;
     const k = this.keys;
     if(s.health<=0){
-      if(this._engineOn){ this._engineOn=false; F.stopEngine(); }
-      F.stopMusic(0.5);
-      F.shipDestroy();
-      this.scene.start('GameOver',{score:this.score,sector:this.sector,reason:'hull'});
+      this.scene.start('GameOver',{cj:this.cj,dy:this.dy,al:'hull'});
       return;
     }
     if(s.fuel<=0){
-      if(this._engineOn){ this._engineOn=false; F.stopEngine(); }
-      if(!this._fuelEmptyTimer) this._fuelEmptyTimer=0;
-      this._fuelEmptyTimer+=dt;
-      this.msgText.setText('⚠ OUT OF FUEL — ADRIFT (' + Math.ceil(3-this._fuelEmptyTimer) + 's)');
-      this.msgText.setColor('#ff4400');
-      if(this._fuelEmptyTimer>=3){ F.stopMusic(0.5); F.shipDestroy(); this.scene.start('GameOver',{score:this.score,sector:this.sector,reason:'fuel'}); return; }
+      if(!this.aw) this.aw=0;
+      this.aw+=dt;
+      this.fa.setText('⚠ SIN COMBUSTIBLE — A LA DERIVA (' + Math.ceil(3-this.aw) + 's)');
+      this.fa.setColor('#ff4400');
+      if(this.aw>=3){ this.scene.start('GameOver',{cj:this.cj,dy:this.dy,al:'fuel'}); return; }
     } else {
-      if(this._fuelEmptyTimer){ this._fuelEmptyTimer=0; this.msgText.setColor('#ffff00'); }
+      if(this.aw){ this.aw=0; this.fa.setColor('#ffff00'); }
     }
 
-    const thrustPressed = k.up.isDown||k.w.isDown||this._arcade.up;
-    const rotLeft  = k.left.isDown||k.a.isDown||this._arcade.left;
-    const rotRight = k.right.isDown||k.d.isDown||this._arcade.right;
-    const braking  = (k.space.isDown||this._arcade.brake) && !s.landed;
+    const gu = k.up.isDown||k.w.isDown;
+    const ep = k.left.isDown||k.a.isDown;
+    const cl = k.right.isDown||k.d.isDown;
+    const cc = k.space.isDown && !s.landed;
 
-    if(s.landed && thrustPressed && s.fuel>0){
+    if(s.landed && gu && s.fuel>0){
       const p = s.landedPlanet;
       s.landed = false;
       s.landedPlanet = null;
@@ -1370,51 +1362,46 @@ class GameScene extends Phaser.Scene {
       s.vy = 0;
 
       if(p){
-        const ang = angleTo(p.x, p.y, s.x, s.y);
-        s.x = p.x + Math.cos(ang) * (p.radius + 20);
-        s.y = p.y + Math.sin(ang) * (p.radius + 20);
+        const ang = gr(p.x, p.y, s.x, s.y);
+        s.x = p.x + Math.cos(ang) * (p.fy + 20);
+        s.y = p.y + Math.sin(ang) * (p.fy + 20);
 
-        s.angle = ang;
+        s.bv = ang;
       }
-      this.landingTimer = 0;
-      this.landingTower = null;
+      this.bi = 0;
+      this.fr = null;
     }
 
-    const thrusting = thrustPressed && !s.landed;
-    s.thrusting = thrusting;
-
-    
-    if(thrusting && s.fuel>0 && !this._engineOn){ this._engineOn=true; F.startEngine(); }
-    if((!thrusting || s.fuel<=0) && this._engineOn){ this._engineOn=false; F.stopEngine(); }
+    const dx = gu && !s.landed;
+    s.dx = dx;
 
     if(!s.landed){
-      if(rotLeft) s.angle -= dt*2.5;
-      if(rotRight) s.angle += dt*2.5;
+      if(ep) s.bv -= dt*2.5;
+      if(cl) s.bv += dt*2.5;
     }
 
-    const enginePower = 180;
+    const cp = 180;
 
-    if(thrusting && s.fuel>0){
-      s.vx += Math.cos(s.angle)*enginePower*dt;
-      s.vy += Math.sin(s.angle)*enginePower*dt;
+    if(dx && s.fuel>0){
+      s.vx += Math.cos(s.bv)*cp*dt;
+      s.vy += Math.sin(s.bv)*cp*dt;
       s.fuel = Math.max(0, s.fuel - dt*8);
     }
 
-    if(braking){
+    if(cc){
       s.vx *= (1 - dt*3);
       s.vy *= (1 - dt*3);
       s.fuel = Math.max(0, s.fuel - dt*4);
-      if(!this._brakeSound){ this._brakeSound=true; F.brake(); }
-    } else { this._brakeSound=false; }
+    }
 
     if(!s.landed){
-      for(const p of this.planets){
+      for(const p of this.cm){
         const d = dist(s.x,s.y,p.x,p.y);
-        if(d<p.gravRadius){
-          const force = p.gravity * (1 - d/p.gravRadius);
-          const angle = angleTo(s.x,s.y,p.x,p.y);
-          s.vx += Math.cos(angle)*force*dt;
-          s.vy += Math.sin(angle)*force*dt;
+        if(d<p.ck){
+          const ci = p.fe * (1 - d/p.ck);
+          const bv = gr(s.x,s.y,p.x,p.y);
+          s.vx += Math.cos(bv)*ci*dt;
+          s.vy += Math.sin(bv)*ci*dt;
         }
       }
     }
@@ -1429,208 +1416,202 @@ class GameScene extends Phaser.Scene {
       if(s.y>H+20) s.y=-20;
     }
 
-    let onPlanet = false;
-    for(const p of this.planets){
+    let gv = false;
+    for(const p of this.cm){
       const d = dist(s.x,s.y,p.x,p.y);
-      const landDist = p.radius + 12;
-      if(d<=landDist+5){
-        const speed = Math.sqrt(s.vx**2+s.vy**2);
-        if(speed>80){
+      const ax = p.fy + 12;
+      if(d<=ax+5){
+        const gl = Math.sqrt(s.vx**2+s.vy**2);
+        if(gl>80){
 
-          let cdmg = (speed-80)*0.3 * dt * 60;
+          let cdmg = (gl-80)*0.3 * dt * 60;
           s.health = Math.max(0, s.health - cdmg);
           const dmg = cdmg;
 
-          const norm = angleTo(p.x,p.y,s.x,s.y);
-          s.vx = Math.cos(norm)*speed*0.3;
-          s.vy = Math.sin(norm)*speed*0.3;
+          const norm = gr(p.x,p.y,s.x,s.y);
+          s.vx = Math.cos(norm)*gl*0.3;
+          s.vy = Math.sin(norm)*gl*0.3;
         } else {
 
-          onPlanet = true;
-          if(!s.landed) F.land();
+          gv = true;
           s.landed = true;
           s.landedPlanet = p;
           s.vx = 0; s.vy = 0;
 
-          const ang = angleTo(p.x,p.y,s.x,s.y);
-          s.x = p.x + Math.cos(ang)*landDist;
-          s.y = p.y + Math.sin(ang)*landDist;
-          s.angle = ang;
+          const ang = gr(p.x,p.y,s.x,s.y);
+          s.x = p.x + Math.cos(ang)*ax;
+          s.y = p.y + Math.sin(ang)*ax;
+          s.bv = ang;
 
-          if(p.hasResources && p.resourceAmt>0 && dt>0){
-            const absorb = Math.min(p.resourceAmt, dt*15);
-            p.resourceAmt -= absorb;
-            const maxFuelP = 100 + this.upgrades.extraTank*15;
-            if(p.resourceType==='fuel') s.fuel = Math.min(maxFuelP, s.fuel+absorb);
-            if(p.resourceType==='energy') s.energy = Math.min(100, s.energy+absorb);
-            if(p.resourceType==='health') s.health = Math.min(100, s.health+absorb);
-            if(p.resourceAmt<=0){ p.ring&&p.ring.clear(); p.label.setText(''); }
+          if(p.ch && p.eh>0 && dt>0){
+            const by = Math.min(p.eh, dt*15);
+            p.eh -= by;
+            const bo = 100 + this.gy.extraTank*15;
+            if(p.dz==='fuel') s.fuel = Math.min(bo, s.fuel+by);
+            if(p.dz==='energy') s.energy = Math.min(100, s.energy+by);
+            if(p.dz==='health') s.health = Math.min(100, s.health+by);
+            if(p.eh<=0){ p.ring&&p.ring.clear(); p.bk.setText(''); }
           }
 
-          if(this.fuelDepots){
-            for(const fd of this.fuelDepots){
+          if(this.dv){
+            for(const fd of this.dv){
               if(!fd.collected && dist(s.x,s.y,fd.x,fd.y)<28){
-                const maxFuel = 100 + this.upgrades.extraTank*15;
-                s.fuel = Math.min(maxFuel, s.fuel + fd.amount);
+                const dw = 100 + this.gy.extraTank*15;
+                s.fuel = Math.min(dw, s.fuel + fd.cy);
                 fd.collected = true;
                 fd.gfx.clear();
-                fd.label.setText('');
-                F.collectItem();
-                this.showMsg(`+${fd.amount} FUEL`, 1500);
-                this.score += 10;
+                fd.bk.setText('');
+                this.showMsg(`+${fd.cy} COMBUSTIBLE`, 1500);
+                this.cj += 10;
               }
             }
           }
 
-          for(const w of this.wrecks){
+          for(const w of this.fd){
             if(!w.collected && dist(s.x,s.y,w.x,w.y)<30){
-              F.collectItem();
               if(w.type==='health'){
-                
+                // consumable: just restore HP
                 this.ship.health = Math.min(100, this.ship.health + 30);
-                this.showMsg('🔧 +30 HEALTH RESTORED', 2000);
-                this.score += 30;
+                this.showMsg('🔧 +30 SALUD RESTAURADA', 2000);
+                this.cj += 30;
               } else {
-                this.upgrades[w.type] = Math.min(3, (this.upgrades[w.type]||0)+1);
-                this.showUpgradePopup(w.type, this.upgrades[w.type]);
-                this.score += 50;
+                this.gy[w.type] = Math.min(3, (this.gy[w.type]||0)+1);
+                this.showUpgradePopup(w.type, this.gy[w.type]);
+                this.cj += 50;
               }
               w.collected = true;
-              w.gfx.clear(); w.label.destroy();
+              w.gfx.clear(); w.bk.destroy();
             }
           }
         }
         break;
       }
     }
-    if(!onPlanet && s.landed){
+    if(!gv && s.landed){
       s.landed = false;
       s.landedPlanet = null;
-      this.landingTimer = 0;
-      this.landingTower = null;
+      this.bi = 0;
+      this.fr = null;
     }
 
-    if(this.portalActive && this.portalGfx){
-      const pd = dist(s.x,s.y,this.portalX,this.portalY);
+    if(this.bh && this.ad){
+      const pd = dist(s.x,s.y,this.fu,this.bw);
       if(pd<35){
         this.nextSector();
         return;
       }
     }
 
-    const wlvl = this.upgrades.weapon;
-    const fireRate = wlvl>=3 ? 0.12 : wlvl>=2 ? 0.20 : 0.30;
-    const energyCost = wlvl>=3 ? 4 : wlvl>=2 ? 3 : 2;
-    if(wlvl>0 && (k.fire.isDown||this._arcade.fire) && this.fireTimer<=0){
-      if(s.energy>=energyCost){
-        s.energy = Math.max(0, s.energy - energyCost);
+    const wlvl = this.gy.weapon;
+    const di = wlvl>=3 ? 0.12 : wlvl>=2 ? 0.20 : 0.30;
+    const ag = wlvl>=3 ? 4 : wlvl>=2 ? 3 : 2;
+    if(wlvl>0 && (k.fire.isDown||k.ctrl.isDown||k.shift.isDown||this.ds) && this.ca<=0 && !s.landed){
+      if(s.energy>=ag){
+        s.energy = Math.max(0, s.energy - ag);
         this.fireBullet();
         if(wlvl>=2) this.fireBullet(0.18);
         if(wlvl>=3) this.fireBullet(-0.18);
-        this.fireTimer = fireRate;
+        this.ca = di;
       } else {
 
-        if(!this._noEnergyFlash || this._noEnergyFlash<=0){
-          this.showMsg('NOT ENOUGH ENERGY TO SHOOT', 1200);
-          this._noEnergyFlash = 1.5;
+        if(!this.fn || this.fn<=0){
+          this.showMsg('⚡ SIN ENERGÍA PARA DISPARAR', 1200);
+          this.fn = 1.5;
         }
       }
     }
-    if(this._noEnergyFlash>0) this._noEnergyFlash -= dt;
+    if(this.fn>0) this.fn -= dt;
   }
 
   fireBullet(spread=0){
     const s = this.ship;
-    const wlvl = this.upgrades.weapon;
-    if(spread===0) F.shoot();
-    const speed = 320 + wlvl*30;
-    const a = s.angle + spread;
+    const wlvl = this.gy.weapon;
+    const gl = 320 + wlvl*30;
+    const a = s.bv + spread;
     const g = this.add.graphics().setDepth(8);
-    const bcolor = wlvl>=3 ? 0xff4400 : wlvl>=2 ? 0xff9900 : 0xffff00;
-    const bsize  = wlvl>=3 ? 4 : wlvl>=2 ? 3.5 : 3;
-    g.fillStyle(bcolor,1); g.fillCircle(0,0,bsize);
-    g.fillStyle(0xffffff,0.4); g.fillCircle(0,0,bsize*0.5);
+    const ee = wlvl>=3 ? 0xff4400 : wlvl>=2 ? 0xff9900 : 0xffff00;
+    const ec  = wlvl>=3 ? 4 : wlvl>=2 ? 3.5 : 3;
+    g.fillStyle(ee,1); g.fillCircle(0,0,ec);
+    g.fillStyle(0xffffff,0.4); g.fillCircle(0,0,ec*0.5);
     g.x = s.x; g.y = s.y;
     const dmg = wlvl>=3 ? 1.5 : wlvl>=2 ? 1 : 0.5;
-    this.bullets.push({ x:s.x, y:s.y, vx:Math.cos(a)*speed+s.vx, vy:Math.sin(a)*speed+s.vy, gfx:g, life:2, dmg });
+    this.da.push({ x:s.x, y:s.y, vx:Math.cos(a)*gl+s.vx, vy:Math.sin(a)*gl+s.vy, gfx:g, life:2, dmg });
   }
 
   updateBullets(dt){
-    for(let i=this.bullets.length-1;i>=0;i--){
-      const b = this.bullets[i];
+    for(let i=this.da.length-1;i>=0;i--){
+      const b = this.da[i];
       b.x += b.vx*dt; b.y += b.vy*dt; b.life -= dt;
       b.gfx.x = b.x; b.gfx.y = b.y;
       if(b.life<=0 || b.x<0||b.x>W||b.y<0||b.y>H){
-        b.gfx.destroy(); this.bullets.splice(i,1); continue;
+        b.gfx.destroy(); this.da.splice(i,1); continue;
       }
 
-      let bulletHitPlanet = false;
-      for(const p of this.planets){
-        if(dist(b.x,b.y,p.x,p.y)<p.radius+2){
-          b.gfx.destroy(); this.bullets.splice(i,1);
-          bulletHitPlanet = true; break;
+      let ex = false;
+      for(const p of this.cm){
+        if(dist(b.x,b.y,p.x,p.y)<p.fy+2){
+          b.gfx.destroy(); this.da.splice(i,1);
+          ex = true; break;
         }
       }
-      if(bulletHitPlanet) continue;
+      if(ex) continue;
 
-      for(let j=this.enemies.length-1;j>=0;j--){
-        const e = this.enemies[j];
+      for(let j=this.gx.length-1;j>=0;j--){
+        const e = this.gx[j];
         if(dist(b.x,b.y,e.x,e.y)<14){
           e.hp -= b.dmg||1;
 
-          e.alerted = true;
+          e.eb = true;
           e.alertTimer = 6 + Math.random()*4;
           e.lastKnownX = this.ship.x;
           e.lastKnownY = this.ship.y;
-          b.gfx.destroy(); this.bullets.splice(i,1);
+          b.gfx.destroy(); this.da.splice(i,1);
           if(e.hp<=0){
-            F.enemyDie();
-            e.gfx.destroy(); this.enemies.splice(j,1);
-            this.score += 100;
-            this.showMsg('+100 ENEMY DESTROYED!');
+            e.gfx.destroy(); this.gx.splice(j,1);
+            this.cj += 100;
+            this.showMsg('+100 ENEMIGO DESTRUIDO!');
           }
           break;
         }
       }
-      
-      if(!this.bullets[i]) continue;
-      for(let j=this.planetTurrets.length-1;j>=0;j--){
-        const t = this.planetTurrets[j];
-        const tx = t.bx+Math.cos(t.angle)*8, ty = t.by+Math.sin(t.angle)*8;
+      // Check bullet vs dn turrets
+      if(!this.da[i]) continue;
+      for(let j=this.gt.length-1;j>=0;j--){
+        const t = this.gt[j];
+        const tx = t.bx+Math.cos(t.bv)*8, ty = t.by+Math.sin(t.bv)*8;
         if(dist(b.x,b.y,tx,ty)<12){
           t.hp -= b.dmg||1;
-          b.gfx.destroy(); this.bullets.splice(i,1);
+          b.gfx.destroy(); this.da.splice(i,1);
           if(t.hp<=0){
-            t.gfx.destroy(); this.planetTurrets.splice(j,1);
-            this.score += 75;
-            this.showMsg("+75 TURRET DESTROYED!");
+            t.gfx.destroy(); this.gt.splice(j,1);
+            this.cj += 75;
+            this.showMsg("+75 TORRETA DESTRUIDA!");
           }
           break;
         }
       }
     }
 
-    for(let i=this.enemyBullets.length-1;i>=0;i--){
-      const b = this.enemyBullets[i];
+    for(let i=this.co.length-1;i>=0;i--){
+      const b = this.co[i];
       b.x += b.vx*dt; b.y += b.vy*dt; b.life -= dt;
       b.gfx.x = b.x; b.gfx.y = b.y;
       if(b.life<=0 || b.x<0||b.x>W||b.y<0||b.y>H){
-        b.gfx.destroy(); this.enemyBullets.splice(i,1); continue;
+        b.gfx.destroy(); this.co.splice(i,1); continue;
       }
 
-      let eHitPlanet=false;
-      for(const p of this.planets){
-        if(dist(b.x,b.y,p.x,p.y)<p.radius+2){
-          b.gfx.destroy(); this.enemyBullets.splice(i,1);
-          eHitPlanet=true; break;
+      let ce=false;
+      for(const p of this.cm){
+        if(dist(b.x,b.y,p.x,p.y)<p.fy+2){
+          b.gfx.destroy(); this.co.splice(i,1);
+          ce=true; break;
         }
       }
-      if(eHitPlanet) continue;
+      if(ce) continue;
       if(dist(b.x,b.y,this.ship.x,this.ship.y)<12){
         let dmg = 10;
-        F.damage();
         this.ship.health = Math.max(0, this.ship.health-dmg);
-        b.gfx.destroy(); this.enemyBullets.splice(i,1);
+        b.gfx.destroy(); this.co.splice(i,1);
       }
     }
   }
@@ -1638,28 +1619,28 @@ class GameScene extends Phaser.Scene {
   drawAsteroid(a){
     a.gfx.clear();
     a.gfx.x = a.x; a.gfx.y = a.y;
-    const r = a.radius;
+    const r = a.fy;
 
     const pts = 7 + Math.floor(r/3);
-    const verts = [];
+    const hd = [];
     for(let i=0;i<pts;i++){
       const ang = (i/pts)*Math.PI*2 + a.rot;
       const jag = 0.65 + 0.35*Math.abs(Math.sin(i*2.3+a.rot*0.5));
-      verts.push({ x: Math.cos(ang)*r*jag, y: Math.sin(ang)*r*jag });
+      hd.push({ x: Math.cos(ang)*r*jag, y: Math.sin(ang)*r*jag });
     }
 
     const grey = 0x556677;
     a.gfx.fillStyle(grey, 1);
     a.gfx.beginPath();
-    a.gfx.moveTo(verts[0].x, verts[0].y);
-    for(let i=1;i<verts.length;i++) a.gfx.lineTo(verts[i].x, verts[i].y);
+    a.gfx.moveTo(hd[0].x, hd[0].y);
+    for(let i=1;i<hd.length;i++) a.gfx.lineTo(hd[i].x, hd[i].y);
     a.gfx.closePath();
     a.gfx.fillPath();
 
     a.gfx.lineStyle(1, 0x8899aa, 0.7);
     a.gfx.beginPath();
-    a.gfx.moveTo(verts[0].x, verts[0].y);
-    for(let i=1;i<verts.length;i++) a.gfx.lineTo(verts[i].x, verts[i].y);
+    a.gfx.moveTo(hd[0].x, hd[0].y);
+    for(let i=1;i<hd.length;i++) a.gfx.lineTo(hd[i].x, hd[i].y);
     a.gfx.closePath();
     a.gfx.strokePath();
 
@@ -1668,8 +1649,8 @@ class GameScene extends Phaser.Scene {
   }
 
   spawnAsteroid(){
-    const s = this.sector;
-    
+    const s = this.dy;
+    // Spawn from a random edge of the screen
     let ax, ay;
     const edge = Math.floor(Math.random()*4);
     if(edge===0){ ax=Phaser.Math.Between(0,W); ay=-20; }
@@ -1679,54 +1660,54 @@ class GameScene extends Phaser.Scene {
 
     const minR = s>=5 ? 6 : 4;
     const maxR = s>=7 ? 22 : s>=4 ? 16 : 10;
-    const radius = Phaser.Math.Between(minR, maxR);
-    const speed  = Phaser.Math.FloatBetween(14, 32+s*2.76);
-    
-    const baseAngle = angleTo(ax, ay, W/2+Phaser.Math.Between(-150,150), H/2+Phaser.Math.Between(-150,150));
+    const fy = Phaser.Math.Between(minR, maxR);
+    const gl  = Phaser.Math.FloatBetween(14, 32+s*2.76);
+    // Aim roughly toward screen center with some spread
+    const ge = gr(ax, ay, W/2+Phaser.Math.Between(-150,150), H/2+Phaser.Math.Between(-150,150));
     const spin = Phaser.Math.FloatBetween(-1.5,1.5);
     const g = this.add.graphics().setDepth(3);
-    const ast = {x:ax, y:ay, vx:Math.cos(baseAngle)*speed, vy:Math.sin(baseAngle)*speed, radius, spin, rot:0, gfx:g, hp:Math.ceil(radius/4)};
+    const ast = {x:ax, y:ay, vx:Math.cos(ge)*gl, vy:Math.sin(ge)*gl, fy, spin, rot:0, gfx:g, hp:Math.ceil(fy/4)};
     this.drawAsteroid(ast);
-    this.asteroids.push(ast);
+    this.ft.push(ast);
   }
 
   updateAsteroids(dt){
-    const s = this.sector;
-    const targetCount = 3 + Math.floor(s*1.1);
+    const s = this.dy;
+    const at = 3 + Math.floor(s*1.1);
 
-    
-    this._astRespawnTimer = (this._astRespawnTimer||0) - dt;
-    if(this._astRespawnTimer<=0 && this.asteroids.length < targetCount){
+    // Respawn timer — trickle in new ft to replace cq ones
+    this.dm = (this.dm||0) - dt;
+    if(this.dm<=0 && this.ft.length < at){
       this.spawnAsteroid();
-      this._astRespawnTimer = 2.5; 
+      this.dm = 2.5; // new one every 2.5s when below target
     }
 
-    for(let i=this.asteroids.length-1;i>=0;i--){
-      const a = this.asteroids[i];
-      let destroyed = false;
+    for(let i=this.ft.length-1;i>=0;i--){
+      const a = this.ft[i];
+      let cq = false;
 
-      for(const p of this.planets){
+      for(const p of this.cm){
         const dp = dist(a.x,a.y,p.x,p.y);
-        
-        if(dp < p.gravRadius){
-          const ag = angleTo(a.x,a.y,p.x,p.y);
-          const force = p.gravity*(1-dp/p.gravRadius);
-          a.vx += Math.cos(ag)*force*0.3*dt;
-          a.vy += Math.sin(ag)*force*0.3*dt;
+        // Gravity pull
+        if(dp < p.ck){
+          const ag = gr(a.x,a.y,p.x,p.y);
+          const ci = p.fe*(1-dp/p.ck);
+          a.vx += Math.cos(ag)*ci*0.3*dt;
+          a.vy += Math.sin(ag)*ci*0.3*dt;
         }
-        
-        if(dp < p.radius + a.radius){
+        // Crash into dn — destroy asteroid
+        if(dp < p.fy + a.fy){
           a.gfx.destroy();
-          this.asteroids.splice(i,1);
-          destroyed = true;
+          this.ft.splice(i,1);
+          cq = true;
           break;
         }
       }
-      if(destroyed) continue;
+      if(cq) continue;
 
       const aspd = Math.sqrt(a.vx**2+a.vy**2);
-      const maxAspd = 80;
-      if(aspd>maxAspd){ a.vx=(a.vx/aspd)*maxAspd; a.vy=(a.vy/aspd)*maxAspd; }
+      const gw = 80;
+      if(aspd>gw){ a.vx=(a.vx/aspd)*gw; a.vy=(a.vy/aspd)*gw; }
 
       a.rot += a.spin*dt;
       a.x += a.vx*dt; a.y += a.vy*dt;
@@ -1736,46 +1717,46 @@ class GameScene extends Phaser.Scene {
       this.drawAsteroid(a);
 
       const ds = dist(a.x,a.y,this.ship.x,this.ship.y);
-      if(ds < a.radius+10 && !this.ship.landed){
-        const impactSpd = Math.sqrt((a.vx-this.ship.vx)**2+(a.vy-this.ship.vy)**2);
-        if(impactSpd>20){
-          let dmg = impactSpd*0.012*a.radius*0.12;
+      if(ds < a.fy+10 && !this.ship.landed){
+        const bu = Math.sqrt((a.vx-this.ship.vx)**2+(a.vy-this.ship.vy)**2);
+        if(bu>20){
+          let dmg = bu*0.012*a.fy*0.12;
           this.ship.health = Math.max(0, this.ship.health-dmg);
 
-          const ba = angleTo(a.x,a.y,this.ship.x,this.ship.y);
-          this.ship.vx += Math.cos(ba)*impactSpd*0.4;
-          this.ship.vy += Math.sin(ba)*impactSpd*0.4;
+          const ba = gr(a.x,a.y,this.ship.x,this.ship.y);
+          this.ship.vx += Math.cos(ba)*bu*0.4;
+          this.ship.vy += Math.sin(ba)*bu*0.4;
         }
 
         a.hp -= 0.5;
       }
 
-      for(let bi=this.bullets.length-1;bi>=0;bi--){
-        const b = this.bullets[bi];
-        if(dist(b.x,b.y,a.x,a.y)<a.radius+3){
+      for(let bi=this.da.length-1;bi>=0;bi--){
+        const b = this.da[bi];
+        if(dist(b.x,b.y,a.x,a.y)<a.fy+3){
           a.hp -= b.dmg||1;
-          b.gfx.destroy(); this.bullets.splice(bi,1);
+          b.gfx.destroy(); this.da.splice(bi,1);
           if(a.hp<=0){
 
-            if(a.radius>8){
+            if(a.fy>8){
               for(let si=0;si<2;si++){
                 const sa = Math.random()*Math.PI*2;
                 const sg2 = this.add.graphics().setDepth(3);
                 const frag = {
-                  x:a.x+Math.cos(sa)*a.radius*0.5,
-                  y:a.y+Math.sin(sa)*a.radius*0.5,
+                  x:a.x+Math.cos(sa)*a.fy*0.5,
+                  y:a.y+Math.sin(sa)*a.fy*0.5,
                   vx:a.vx+Math.cos(sa)*25, vy:a.vy+Math.sin(sa)*25,
-                  radius:Math.floor(a.radius*0.55),
+                  fy:Math.floor(a.fy*0.55),
                   spin:Phaser.Math.FloatBetween(-2,2), rot:0,
                   gfx:sg2, hp:1
                 };
                 this.drawAsteroid(frag);
-                this.asteroids.push(frag);
+                this.ft.push(frag);
               }
             }
             a.gfx.destroy();
-            this.asteroids.splice(i,1);
-            this.score += Math.ceil(a.radius)*3;
+            this.ft.splice(i,1);
+            this.cj += Math.ceil(a.fy)*3;
             break;
           }
         }
@@ -1784,15 +1765,15 @@ class GameScene extends Phaser.Scene {
   }
 
   updateEnemies(dt, time){
-    const maxSpd = 82 + this.sector*2.76;
+    const cb = 82 + this.dy*2.76;
 
-    for(const e of this.enemies){
+    for(const e of this.gx){
       const ds = dist(e.x,e.y,this.ship.x,this.ship.y);
 
-      const canSee = hasLineOfSight(e.x,e.y,this.ship.x,this.ship.y,this.planets);
+      const cd = dk(e.x,e.y,this.ship.x,this.ship.y,this.cm);
 
-      if(canSee && ds<220){
-        e.alerted = true;
+      if(cd && ds<220){
+        e.eb = true;
         e.alertTimer = Math.max(e.alertTimer||0, 0.5);
         e.lastKnownX = this.ship.x;
         e.lastKnownY = this.ship.y;
@@ -1800,108 +1781,108 @@ class GameScene extends Phaser.Scene {
       if(e.alertTimer>0){
         e.alertTimer -= dt;
         if(e.alertTimer<=0){
-          e.alerted = false;
+          e.eb = false;
         }
       }
 
-      let avoidX=0, avoidY=0;
-      for(const p of this.planets){
+      let es=0, avoidY=0;
+      for(const p of this.cm){
         const dp = dist(e.x,e.y,p.x,p.y);
-        const avoidR = p.radius + 55;
-        if(dp < avoidR){
-          const strength = (1 - dp/avoidR) * 320;
-          const ang = angleTo(p.x,p.y,e.x,e.y);
-          avoidX += Math.cos(ang)*strength;
-          avoidY += Math.sin(ang)*strength;
+        const av = p.fy + 55;
+        if(dp < av){
+          const hc = (1 - dp/av) * 320;
+          const ang = gr(p.x,p.y,e.x,e.y);
+          es += Math.cos(ang)*hc;
+          avoidY += Math.sin(ang)*hc;
         }
       }
 
-      let desiredVx=0, desiredVy=0;
-      if(e.alerted){
+      let dh=0, desiredVy=0;
+      if(e.eb){
 
-        const targetX = canSee ? this.ship.x : e.lastKnownX;
-        const targetY = canSee ? this.ship.y : e.lastKnownY;
-        const a = angleTo(e.x,e.y,targetX,targetY);
-        const dTarget = dist(e.x,e.y,targetX,targetY);
-        const chaseSpd = 72 + this.sector*1.84;
-        desiredVx = Math.cos(a)*chaseSpd;
-        desiredVy = Math.sin(a)*chaseSpd;
+        const gp = cd ? this.ship.x : e.lastKnownX;
+        const au = cd ? this.ship.y : e.lastKnownY;
+        const a = gr(e.x,e.y,gp,au);
+        const eo = dist(e.x,e.y,gp,au);
+        const go = 72 + this.dy*1.84;
+        dh = Math.cos(a)*go;
+        desiredVy = Math.sin(a)*go;
         e.targetAngle = a;
         e.state = 'chase';
 
-        if(canSee && ds<190){
-          e.fireTimer -= dt;
+        if(cd && ds<190){
+          e.ca -= dt;
 
-          const fRate = e.type===3 ? 3.0 : e.type===2 ? 0.6 : e.type===1 ? 1.5 : 1.8 + Math.random()*1.0;
-          if(e.fireTimer<=0){
-            e.fireTimer = fRate;
-            const shootA = angleTo(e.x,e.y,this.ship.x,this.ship.y);
-            const bspd = 195 + this.sector*4.6;
+          const el = e.type===3 ? 3.0 : e.type===2 ? 0.6 : e.type===1 ? 1.5 : 1.8 + Math.random()*1.0;
+          if(e.ca<=0){
+            e.ca = el;
+            const fx = gr(e.x,e.y,this.ship.x,this.ship.y);
+            const bspd = 195 + this.dy*4.6;
             if(e.type===3){
               for(let sp=-1;sp<=1;sp++){
                 const g2=this.add.graphics().setDepth(8);
                 g2.fillStyle(0xcc44ff,1); g2.fillCircle(0,0,5);
                 g2.x=e.x; g2.y=e.y;
-                const sa=shootA+sp*0.28;
-                this.enemyBullets.push({x:e.x,y:e.y,vx:Math.cos(sa)*(bspd*0.65),vy:Math.sin(sa)*(bspd*0.65),gfx:g2,life:3});
+                const sa=fx+sp*0.28;
+                this.co.push({x:e.x,y:e.y,vx:Math.cos(sa)*(bspd*0.65),vy:Math.sin(sa)*(bspd*0.65),gfx:g2,life:3});
               }
             } else if(e.type===1){
               for(let sp=-1;sp<=1;sp+=2){
                 const g2=this.add.graphics().setDepth(8);
                 g2.fillStyle(0xff8800,1); g2.fillCircle(0,0,3);
                 g2.x=e.x; g2.y=e.y;
-                const sa=shootA+sp*0.12;
-                this.enemyBullets.push({x:e.x,y:e.y,vx:Math.cos(sa)*bspd,vy:Math.sin(sa)*bspd,gfx:g2,life:2.2});
+                const sa=fx+sp*0.12;
+                this.co.push({x:e.x,y:e.y,vx:Math.cos(sa)*bspd,vy:Math.sin(sa)*bspd,gfx:g2,life:2.2});
               }
             } else if(e.type===2){
               const g2=this.add.graphics().setDepth(8);
               g2.fillStyle(0x00ffcc,1); g2.fillCircle(0,0,2);
               g2.x=e.x; g2.y=e.y;
-              this.enemyBullets.push({x:e.x,y:e.y,vx:Math.cos(shootA)*(bspd*1.3),vy:Math.sin(shootA)*(bspd*1.3),gfx:g2,life:1.8});
+              this.co.push({x:e.x,y:e.y,vx:Math.cos(fx)*(bspd*1.3),vy:Math.sin(fx)*(bspd*1.3),gfx:g2,life:1.8});
             } else {
               const g2=this.add.graphics().setDepth(8);
               g2.fillStyle(0xff4400,1); g2.fillCircle(0,0,3);
               g2.x=e.x; g2.y=e.y;
-              this.enemyBullets.push({x:e.x,y:e.y,vx:Math.cos(shootA)*bspd,vy:Math.sin(shootA)*bspd,gfx:g2,life:2.5});
+              this.co.push({x:e.x,y:e.y,vx:Math.cos(fx)*bspd,vy:Math.sin(fx)*bspd,gfx:g2,life:2.5});
             }
           }
         }
 
-        if(!canSee && dTarget < 25){
-          e.alerted = false;
+        if(!cd && eo < 25){
+          e.eb = false;
           e.alertTimer = 0;
         }
       } else {
         e.state = 'patrol';
         if(!e.wanderAngle || Math.random()<dt*0.8) e.wanderAngle = Math.random()*Math.PI*2;
-        desiredVx = Math.cos(e.wanderAngle)*35;
+        dh = Math.cos(e.wanderAngle)*35;
         desiredVy = Math.sin(e.wanderAngle)*35;
         e.targetAngle = e.wanderAngle;
       }
 
-      e.vx = lerp(e.vx, desiredVx + avoidX, dt*2.5);
+      e.vx = lerp(e.vx, dh + es, dt*2.5);
       e.vy = lerp(e.vy, desiredVy + avoidY, dt*2.5);
 
-      for(const p of this.planets){
+      for(const p of this.cm){
         const dp = dist(e.x,e.y,p.x,p.y);
-        if(dp < p.radius + 14){
-          const na = angleTo(p.x,p.y,e.x,e.y);
+        if(dp < p.fy + 14){
+          const na = gr(p.x,p.y,e.x,e.y);
           e.vx = Math.cos(na)*60;
           e.vy = Math.sin(na)*60;
-          e.x = p.x + Math.cos(na)*(p.radius+15);
-          e.y = p.y + Math.sin(na)*(p.radius+15);
+          e.x = p.x + Math.cos(na)*(p.fy+15);
+          e.y = p.y + Math.sin(na)*(p.fy+15);
         }
       }
 
       const spd = Math.sqrt(e.vx**2+e.vy**2);
-      if(spd>maxSpd){ e.vx=(e.vx/spd)*maxSpd; e.vy=(e.vy/spd)*maxSpd; }
+      if(spd>cb){ e.vx=(e.vx/spd)*cb; e.vy=(e.vy/spd)*cb; }
       if(spd>5) e.targetAngle = lerp(e.targetAngle, Math.atan2(e.vy,e.vx), dt*5);
 
       e.x += e.vx*dt; e.y += e.vy*dt;
       if(e.x<-20) e.x=W+20; if(e.x>W+20) e.x=-20;
       if(e.y<-20) e.y=H+20; if(e.y>H+20) e.y=-20;
 
-      this.drawEnemyShip(e.gfx, e.x, e.y, e.targetAngle, e.alerted, canSee, e.type||0, e.hp, e.maxHp);
+      this.drawEnemyShip(e.gfx, e.x, e.y, e.targetAngle, e.eb, cd, e.type||0);
 
       if(ds<15){
         let rdmg = 20*dt;
@@ -1912,69 +1893,69 @@ class GameScene extends Phaser.Scene {
 
   updateTowers(dt){
     const s = this.ship;
-    let nearTower = null;
-    let minDist = 999;
+    let fz = null;
+    let bx = 999;
 
-    for(const t of this.towers){
+    for(const t of this.eg){
       if(t.active) continue;
       const d = dist(s.x,s.y,t.x,t.y);
-      if(d<minDist){ minDist=d; if(d<30) nearTower=t; }
+      if(d<bx){ bx=d; if(d<30) fz=t; }
     }
 
-    if(s.landed && nearTower){
-      if(this.landingTower !== nearTower){
-        this.landingTower = nearTower;
-        this.landingTimer = 0;
+    if(s.landed && fz){
+      if(this.fr !== fz){
+        this.fr = fz;
+        this.bi = 0;
       }
-      this.landingTimer += dt;
-      nearTower.activationProgress = this.landingTimer/2;
+      this.bi += dt;
+      fz.activationProgress = this.bi/2;
 
-      nearTower.timer.clear();
-      const tbx = nearTower.tipX - 15;
-      const tby = nearTower.tipY - 14;
-      nearTower.timer.fillStyle(0x001100, 0.7);
-      nearTower.timer.fillRect(tbx, tby, 30, 5);
-      nearTower.timer.fillStyle(0x00ff88,1);
-      nearTower.timer.fillRect(tbx, tby, 30*(this.landingTimer/2), 5);
-      nearTower.timer.lineStyle(1,0x00aa44,1);
-      nearTower.timer.strokeRect(tbx, tby, 30, 5);
+      fz.timer.clear();
+      const tbx = fz.tipX - 15;
+      const tby = fz.tipY - 14;
+      fz.timer.fillStyle(0x001100, 0.7);
+      fz.timer.fillRect(tbx, tby, 30, 5);
+      fz.timer.fillStyle(0x00ff88,1);
+      fz.timer.fillRect(tbx, tby, 30*(this.bi/2), 5);
+      fz.timer.lineStyle(1,0x00aa44,1);
+      fz.timer.strokeRect(tbx, tby, 30, 5);
 
-      if(this.landingTimer>=2){
-        this.activateTower(nearTower);
-        this.landingTimer=0;
-        this.landingTower=null;
+      if(this.bi>=2){
+        this.activateTower(fz);
+        this.bi=0;
+        this.fr=null;
       }
     } else {
-      if(this.landingTower && !s.landed){
-        this.landingTower.activationProgress=0;
-        this.landingTower.timer.clear();
-        this.landingTimer=0;
-        this.landingTower=null;
+      if(this.fr && !s.landed){
+        this.fr.activationProgress=0;
+        this.fr.timer.clear();
+        this.bi=0;
+        this.fr=null;
       }
     }
 
-    for(const t of this.towers){
+    for(const t of this.eg){
       const now = this.time.now;
       if(t.active){
-        
+        // Activated: pulsing beam from tip outward + redraw
         t.beam.clear();
-        const pulse = 0.4+0.4*Math.sin(now/180);
+        const ef = 0.4+0.4*Math.sin(now/180);
         const bLen = 30 + 10*Math.sin(now/220);
-        t.beam.lineStyle(2, 0x00ffff, pulse);
+        t.beam.lineStyle(2, 0x00ffff, ef);
         t.beam.lineBetween(
-            t.tipX, t.tipY,
-            t.tipX + Math.cos(t.angle)*bLen,
-            t.tipY + Math.sin(t.angle)*bLen
+          t.tipX, t.tipY,
+          t.tipX + Math.cos(t.bv)*bLen,
+          t.tipY + Math.sin(t.bv)*bLen
         );
-        t.beam.lineStyle(1, 0x00ffcc, pulse*0.4);
-        t.beam.strokeCircle(t.tipX, t.tipY, 6+4*pulse);
+        t.beam.lineStyle(1, 0x00ffcc, ef*0.4);
+        t.beam.strokeCircle(t.tipX, t.tipY, 6+4*ef);
         this.drawTowerGfx(t);
       } else {
-        
+        // Inactive: tick/blink animation on the bulb
         t.beam.clear();
-        const tickRate = 1200; 
-        const phase = (now + t.tickPhase*1000) % tickRate;
-        const on = phase < tickRate*0.18; 
+        const cv = 1200; // ms per full blink cycle
+        const gf = (now + t.tickPhase*1000) % cv;
+        const on = gf < cv*0.18; // short bb
         if(on){
           t.beam.fillStyle(0xffff00, 0.9);
           t.beam.fillCircle(t.tipX, t.tipY, 4);
@@ -1989,22 +1970,17 @@ class GameScene extends Phaser.Scene {
   activateTower(t){
     t.active = true;
     t.timer.clear();
-    this.activeTowers++;
-    this.score += 150;
-    if(this.activeTowers >= this.towers.length){
-      F.allTowersActivated();
-    } else {
-      F.towerActivate();
-    }
-    this.showMsg(`ANTENNA ACTIVATED! ${this.activeTowers}/${this.towers.length}`, 2000);
-    if(this.activeTowers >= this.towers.length){
+    this.an++;
+    this.cj += 150;
+    this.showMsg(`TORRE ACTIVADA! ${this.an}/${this.eg.length}`, 2000);
+    if(this.an >= this.eg.length){
       this.spawnPortal();
     }
   }
 
   spawnPortal(){
-    this.portalActive = true;
-    this.portalGfx = this.add.graphics().setDepth(7);
+    this.bh = true;
+    this.ad = this.add.graphics().setDepth(7);
 
     let px, py, tries=0;
     do {
@@ -2012,22 +1988,21 @@ class GameScene extends Phaser.Scene {
       py = Phaser.Math.Between(60, H-60);
       tries++;
     } while(
-        tries < 200 &&
-        this.planets.some(p => dist(px, py, p.x, p.y) < p.radius + 50)
-        );
-    this.portalX = px;
-    this.portalY = py;
-    F.portalSpawn();
-    this.showMsg('BLACK HOLE SPAWNED! Enter it.', 3000);
-    this.score += 200;
+      tries < 200 &&
+      this.cm.some(p => dist(px, py, p.x, p.y) < p.fy + 50)
+    );
+    this.fu = px;
+    this.bw = py;
+    this.showMsg('¡AGUJERO NEGRO GENERADO! Entra en él.', 3000);
+    this.cj += 200;
   }
 
   updatePortal(dt){
-    if(!this.portalActive || !this.portalGfx) return;
-    const pg = this.portalGfx;
+    if(!this.bh || !this.ad) return;
+    const pg = this.ad;
     pg.clear();
     const t = this.time.now/1000;
-    const px=this.portalX, py=this.portalY;
+    const px=this.fu, py=this.bw;
 
     for(let r=35;r>0;r-=5){
       const a = (r/35)*0.15;
@@ -2036,143 +2011,63 @@ class GameScene extends Phaser.Scene {
     }
 
     for(let i=0;i<8;i++){
-      const angle = (i/8)*Math.PI*2+t*2;
+      const bv = (i/8)*Math.PI*2+t*2;
       const r1=8,r2=34;
       pg.lineStyle(1,0xaa44ff,0.6);
-      pg.lineBetween(px+Math.cos(angle)*r1,py+Math.sin(angle)*r1,
-          px+Math.cos(angle+0.5)*r2,py+Math.sin(angle+0.5)*r2);
+      pg.lineBetween(px+Math.cos(bv)*r1,py+Math.sin(bv)*r1,
+                     px+Math.cos(bv+0.5)*r2,py+Math.sin(bv+0.5)*r2);
     }
     pg.fillStyle(0x000000,1);
     pg.fillCircle(px,py,10);
 
-    if(!this.portalLabel){
-      this.portalLabel = this.add.text(this.portalX,this.portalY-45,'BLACK HOLE',{fontSize:'10px',fontFamily:'Courier New',color:'#aa44ff'}).setOrigin(0.5).setDepth(8);
+    if(!this.fs){
+      this.fs = this.add.text(this.fu,this.bw-45,'AGUJERO NEGRO',{fontSize:'10px',fontFamily:'Courier New',color:'#aa44ff'}).setOrigin(0.5).setDepth(8);
     }
   }
 
   nextSector(){
-    if(this.sectorTransition) return;
-    this.sectorTransition = true;
-    this.score += 500 + this.sector*100;
-    this.sector++;
-    F.portalEnter();
-    F.stopMusic(1.2);
-    if(this._engineOn){ this._engineOn=false; F.stopEngine(); }
+    if(this.de) return;
+    this.de = true;
+    this.cj += 500 + this.dy*100;
+    this.dy++;
 
-    const flash = this.add.graphics().setDepth(50);
-    flash.fillStyle(0xffffff,1); flash.fillRect(0,0,W,H);
+    const bb = this.add.graphics().setDepth(50);
+    bb.fillStyle(0xffffff,1); bb.fillRect(0,0,W,H);
     this.tweens.add({
-      targets: flash, alpha: 0, duration: 800,
+      targets: bb, alpha: 0, duration: 800,
       onComplete: ()=>{
-        flash.destroy();
-        this.sectorTransition = false;
-        if(this.portalLabel){ this.portalLabel.destroy(); this.portalLabel=null; }
+        bb.destroy();
+        this.de = false;
+        if(this.fs){ this.fs.destroy(); this.fs=null; }
         this.generateSector();
         this.createUI();
-        if(this.sector===1) this.startTutorial();
+        if(this.dy===1) this.startTutorial();
 
-        const maxFuelSect = 100 + (this.upgrades.extraTank||0)*15;
-        this.ship.fuel = Math.min(maxFuelSect, this.ship.fuel+20);
+        const ey = 100 + (this.gy.extraTank||0)*15;
+        this.ship.fuel = Math.min(ey, this.ship.fuel+20);
         this.ship.energy = Math.min(100, this.ship.energy+15);
         this.ship.health = Math.min(100, this.ship.health+20);
         const sp = this.findSafeSpawn();
         this.ship.x = sp.x; this.ship.y = sp.y;
         this.ship.vx = 0; this.ship.vy = 0;
         this.ship.landed = false;
-        this.activeTowers = 0;
-        this.landingTimer = 0;
-        this.landingTower = null;
-        F.sectorStart();
-        F.startMusic();
-        this.showMsg(`SECTOR ${this.sector} STARTED!`, 2500);
-
-        
-        this.spawnShipBeacon(sp.x, sp.y);
+        this.an = 0;
+        this.bi = 0;
+        this.fr = null;
+        this.showMsg(`SECTOR ${this.dy} INICIADO!`, 2500);
       }
     });
   }
-
-  spawnShipBeacon(sx, sy){
-    
-    const rings = this.add.graphics().setDepth(30);
-    let ringAge = 0;
-    const ringEvent = this.time.addEvent({ delay: 16, loop: true, callback: ()=>{
-        ringAge += 0.016;
-        rings.clear();
-        for(let i=0;i<3;i++){
-          const t = (ringAge*0.9 - i*0.25);
-          if(t<0) continue;
-          const r = t * 120;
-          const alpha = Math.max(0, 0.7 - t*0.9);
-          rings.lineStyle(2, 0x00ffff, alpha);
-          rings.strokeCircle(sx, sy, r);
-        }
-        if(ringAge > 3.5){ ringEvent.remove(); rings.destroy(); }
-      }});
-
-    
-    const arrowGfx = this.add.graphics().setDepth(31);
-    const arrowLabel = this.add.text(sx, sy-38, '◆ SHIP ◆', {
-      fontSize:'10px', fontFamily:'Courier New', color:'#00ffff', stroke:'#003333', strokeThickness:2
-    }).setOrigin(0.5).setDepth(31);
-
-    
-    this.tweens.add({ targets: arrowLabel, alpha:{from:0.2,to:1}, duration:300, yoyo:true, repeat:13,
-      onComplete: ()=>{ arrowLabel.destroy(); }
-    });
-
-    let arrowAge = 0;
-    const arrowEvent = this.time.addEvent({ delay: 16, loop: true, callback: ()=>{
-        arrowAge += 0.016;
-        arrowGfx.clear();
-        if(arrowAge > 4){ arrowEvent.remove(); arrowGfx.destroy(); return; }
-
-        
-        const corners = [
-          {cx: 30,   cy: H/2,  ang: 0         },   
-          {cx: W-30, cy: H/2,  ang: Math.PI   },   
-          {cx: W/2,  cy: 30,   ang: Math.PI/2 },   
-          {cx: W/2,  cy: H-30, ang: -Math.PI/2},   
-        ];
-
-        const pulse = 0.5 + 0.5*Math.sin(arrowAge * 8);
-        corners.forEach(c=>{
-          
-          const dx = sx - c.cx, dy = sy - c.cy;
-          const edgeAng = Math.atan2(dy, dx);
-          
-          const diff = Math.abs(edgeAng - c.ang);
-          const normDiff = Math.min(diff, Math.PI*2 - diff);
-          if(normDiff > Math.PI * 0.6) return;
-
-          arrowGfx.save();
-          arrowGfx.translateCanvas(c.cx, c.cy);
-          arrowGfx.rotateCanvas(edgeAng);
-          arrowGfx.fillStyle(0x00ffff, 0.5 + 0.4*pulse);
-          
-          for(let k=0;k<3;k++){
-            const ox = k*10;
-            arrowGfx.fillTriangle(12+ox,0, -2+ox,-7, -2+ox,7);
-          }
-          arrowGfx.restore();
-        });
-      }});
-  }
 }
 
-const c = {
+const config = {
   type: Phaser.AUTO,
   width: W,
   height: H,
   backgroundColor: '#00000f',
   parent: 'game-container',
-  scene: [MenuScene, GameScene, GameOverScene],
+  scene: [ba, eq, gm],
   render: { antialias: true }
 };
 
-const g = new Phaser.Game(c);
-
-
-
-
-
+const game = new Phaser.Game(config);
