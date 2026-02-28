@@ -167,54 +167,24 @@ class MenuScene extends Phaser.Scene {
 
   showLeaderboard(){
     this.clearPage();
-
-    this.addObj(this.add.text(W/2,28,'✦  HALL OF FAME  ✦',{fontSize:'22px',fontFamily:'Courier New',color:'#ffdd00',stroke:'#443300',strokeThickness:3}).setOrigin(0.5).setDepth(5));
-
-    const lineG = this.addObj(this.add.graphics().setDepth(5));
-    lineG.lineStyle(1,0x334455,0.8);
-    lineG.lineBetween(40,50,W-40,50);
-
-    
-    this.addObj(this.add.text(W/2-130,64,'#',      {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0.5).setDepth(5));
-    this.addObj(this.add.text(W/2-88, 64,'NAME', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
-    this.addObj(this.add.text(W/2+16, 64,'PUNTOS', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
-    this.addObj(this.add.text(W/2+108,64,'SECT',   {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
-    lineG.lineBetween(40,74,W-40,74);
-
     let scores = [];
     try{ scores = JSON.parse(localStorage.getItem('spaceSectorsLB')||'[]'); }catch(e){}
-
-    const medals = ['🥇','🥈','🥉'];
-    if(scores.length===0){
-      this.addObj(this.add.text(W/2,200,'NO RECORDS YET\nPlay to appear here',{fontSize:'14px',fontFamily:'Courier New',color:'#223344',align:'center'}).setOrigin(0.5).setDepth(5));
-    } else {
-      scores.slice(0,10).forEach((s,i)=>{
-        const y = 90+i*34;
-        const isTop = i<3;
-        const rankCol = i===0?0xffdd00:i===1?0xcccccc:i===2?0xcc8844:0x445566;
-        const rankHex = '#'+rankCol.toString(16).padStart(6,'0');
-
-        if(isTop){
-          const rg = this.addObj(this.add.graphics().setDepth(4));
-          rg.fillStyle(rankCol,0.07); rg.fillRect(40,y-13,W-80,28);
-        }
-
-        this.addObj(this.add.text(W/2-130,y, i<3?medals[i]:`${i+1}.`, {fontSize:isTop?'16px':'12px',fontFamily:'Courier New',color:rankHex}).setOrigin(0.5).setDepth(5));
-        this.addObj(this.add.text(W/2-88,  y, s.name,                   {fontSize:'18px',fontFamily:'Courier New',color:isTop?'#ffffff':'#7788aa'}).setOrigin(0,0.5).setDepth(5));
-        this.addObj(this.add.text(W/2+16,  y, String(s.score).padStart(7), {fontSize:'15px',fontFamily:'Courier New',color:rankHex}).setOrigin(0,0.5).setDepth(5));
-        this.addObj(this.add.text(W/2+112, y, `${s.sector}`,              {fontSize:'12px',fontFamily:'Courier New',color:'#445566'}).setOrigin(0,0.5).setDepth(5));
+    const list = scores.slice(0,10);
+    this.addObj(this.add.text(W/2,60,'LEADERBOARD',{fontSize:'18px',fontFamily:'Courier New',color:'#ffdd00'}).setOrigin(0.5));
+    if(list.length===0){
+      this.addObj(this.add.text(W/2,H/2,'NO RECORDS',{fontSize:'14px',fontFamily:'Courier New',color:'#666'}).setOrigin(0.5));
+    }else{
+      list.forEach((s,i)=>{
+        const y=100+i*26;
+        this.addObj(this.add.text(W/2-120,y,`${i+1}.`,{fontSize:'12px',fontFamily:'Courier New',color:'#999'}).setOrigin(0,0.5));
+        this.addObj(this.add.text(W/2-90,y,s.name,{fontSize:'14px',fontFamily:'Courier New',color:'#fff'}).setOrigin(0,0.5));
+        this.addObj(this.add.text(W/2+20,y,String(s.score),{fontSize:'14px',fontFamily:'Courier New',color:'#ffdd00'}).setOrigin(0,0.5));
+        this.addObj(this.add.text(W/2+110,y,`S${s.sector}`,{fontSize:'12px',fontFamily:'Courier New',color:'#888'}).setOrigin(0,0.5));
       });
     }
-
-    const clearBtn = this.addObj(this.add.text(W/2-70,H-55,'[ CLEAR ]',{fontSize:'13px',fontFamily:'Courier New',color:'#553333'}).setOrigin(0.5).setDepth(5).setInteractive());
-    clearBtn.on('pointerover',()=>clearBtn.setColor('#ff4444'));
-    clearBtn.on('pointerout', ()=>clearBtn.setColor('#553333'));
-    clearBtn.on('pointerdown',()=>{
-      try{ localStorage.removeItem('spaceSectorsLB'); }catch(e){}
-      this.showLeaderboard();
-    });
-
-    this.btn(W/2+70, H-55, '←  BACK', '#aaaaaa', ()=>this.showMain());
+    const clearBtn=this.addObj(this.add.text(W/2-50,H-50,'CLEAR',{fontSize:'12px',fontFamily:'Courier New',color:'#aa5555'}).setOrigin(0.5).setInteractive());
+    clearBtn.on('pointerdown',()=>{ try{localStorage.removeItem('spaceSectorsLB');}catch(e){} this.showLeaderboard(); });
+    this.btn(W/2+60, H-50, 'BACK', '#aaaaaa', ()=>this.showMain());
   }
 }
 
