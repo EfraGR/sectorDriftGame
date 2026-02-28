@@ -7,181 +7,52 @@ const F = (() => {
     if(!ctx) ctx = new (window.AudioContext||window.webkitAudioContext)();
     if(ctx.state==='suspended') ctx.resume();
   };
-
-  
-  let master = null;
-  const getMaster = () => {
+  let m = null;
+  const master = () => {
     init();
-    if(!master){ master = ctx.createGain(); master.gain.value = 0.55; master.connect(ctx.destination); }
-    return master;
+    if(!m){ m = ctx.createGain(); m.gain.value = 0.35; m.connect(ctx.destination); }
+    return m;
   };
-
-  const osc = (type, freq, gainVal, duration, freqEnd, detune=0) => {
-    const ac = ctx;
-    const g = ac.createGain();
-    g.gain.setValueAtTime(gainVal, ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration);
-    g.connect(getMaster());
-    const o = ac.createOscillator();
-    o.type = type;
-    o.frequency.setValueAtTime(freq, ac.currentTime);
-    if(freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, ac.currentTime + duration);
-    o.detune.value = detune;
-    o.connect(g);
-    o.start();
-    o.stop(ac.currentTime + duration);
-  };
-
-  const noise = (gainVal, duration, filterFreq=2000) => {
+  const beep = (f=440,d=0.2,t='square',v=0.18) => {
     init();
-    const bufSize = ctx.sampleRate * duration;
-    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for(let i=0;i<bufSize;i++) data[i] = Math.random()*2-1;
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const filt = ctx.createBiquadFilter();
-    filt.type = 'bandpass';
-    filt.frequency.value = filterFreq;
-    filt.Q.value = 0.8;
+    const o = ctx.createOscillator();
     const g = ctx.createGain();
-    g.gain.setValueAtTime(gainVal, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    src.connect(filt); filt.connect(g); g.connect(getMaster());
-    src.start(); src.stop(ctx.currentTime + duration);
+    o.type = t; o.frequency.value = f;
+    g.gain.setValueAtTime(v, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + d);
+    o.connect(g); g.connect(master());
+    o.start(); o.stop(ctx.currentTime + d);
   };
-
-  let engineNode = null, engineGain = null;
-  let enginePlaying = false;
-
   return {
-    
-    startEngine() {
+    startEngine(){
       init();
-      if(enginePlaying) return;
-      enginePlaying = true;
-      engineGain = ctx.createGain();
-      engineGain.gain.setValueAtTime(0.001, ctx.currentTime);
-      engineGain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.08);
-      engineGain.connect(getMaster());
-      engineNode = ctx.createOscillator();
-      engineNode.type = 'sawtooth';
-      engineNode.frequency.value = 80;
-      
-      const lfo = ctx.createOscillator();
-      const lfoGain = ctx.createGain();
-      lfo.frequency.value = 14;
-      lfoGain.gain.value = 18;
-      lfo.connect(lfoGain); lfoGain.connect(engineNode.frequency);
-      lfo.start(); engineNode.connect(engineGain); engineNode.start();
-      this._engineLfo = lfo;
+      if(this._engine) return;
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.type='square'; o.frequency.value=60; g.gain.value=0.08;
+      o.connect(g); g.connect(master()); o.start();
+      this._engine={o,g};
     },
-    stopEngine() {
-      if(!enginePlaying || !engineGain) return;
-      enginePlaying = false;
-      engineGain.gain.setValueAtTime(engineGain.gain.value, ctx.currentTime);
-      engineGain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.12);
-      const n = engineNode, g = engineGain, lfo = this._engineLfo;
-      setTimeout(()=>{ try{n.stop();g.disconnect();lfo.stop();}catch(e){} }, 180);
-      engineNode = null; engineGain = null;
+    stopEngine(){
+      if(!this._engine) return;
+      const {o,g}=this._engine;
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.12);
+      setTimeout(()=>{ try{o.stop();g.disconnect();}catch(e){} this._engine=null; },140);
     },
-
-    shoot() {
-      init();
-      osc('square', 680, 0.22, 0.08, 180);
-      noise(0.12, 0.06, 3000);
-    },
-
-    towerActivate() {
-      init();
-      
-      [330, 440, 660, 880].forEach((f,i) => {
-        setTimeout(()=>{ osc('sine', f, 0.28, 0.55, f*1.2); }, i*55);
-      });
-    },
-
-    allTowersActivated() {
-      init();
-      
-      [262,330,392,523,659,784].forEach((f,i)=>{
-        setTimeout(()=>{ osc('triangle', f, 0.35, 0.7, f*1.05); }, i*70);
-      });
-    },
-
-    portalSpawn() {
-      init();
-      
-      osc('sawtooth', 55, 0.4, 1.8, 28);
-      osc('sine',    110, 0.25, 1.4, 220);
-      setTimeout(()=>{ noise(0.2, 0.6, 400); }, 400);
-    },
-
-    portalEnter() {
-      init();
-      
-      osc('sawtooth', 120, 0.5, 1.2, 2400);
-      noise(0.3, 1.0, 1200);
-      osc('sine', 220, 0.3, 1.2, 3000);
-    },
-
-    collectItem() {
-      init();
-      osc('sine', 523, 0.25, 0.25, 880);
-      osc('sine', 659, 0.18, 0.2, 1046, 0);
-    },
-
-    damage() {
-      init();
-      noise(0.35, 0.18, 180);
-      osc('sawtooth', 90, 0.3, 0.2, 60);
-    },
-
-    land() {
-      init();
-      osc('sine', 200, 0.15, 0.3, 120);
-      noise(0.08, 0.15, 600);
-    },
-
-    enemyDie() {
-      init();
-      noise(0.28, 0.3, 350);
-      osc('sawtooth', 150, 0.2, 0.3, 55);
-    },
-
-    sectorStart() {
-      init();
-      
-      [880, 660, 440, 880].forEach((f,i)=>{
-        setTimeout(()=>{ osc('square', f, 0.22, 0.18); }, i*90);
-      });
-    },
-
-    brake() {
-      init();
-      noise(0.1, 0.12, 800);
-    },
-
-    shipDestroy() {
-      init();
-      
-      osc('sine', 60, 0.6, 1.4, 20);
-      
-      osc('sawtooth', 180, 0.45, 0.9, 40);
-      
-      noise(0.5, 0.25, 2200);
-      
-      setTimeout(()=>{ noise(0.3, 0.4, 600); }, 120);
-      setTimeout(()=>{ osc('sawtooth', 90, 0.25, 0.7, 30); }, 200);
-      
-      setTimeout(()=>{ noise(0.18, 0.8, 200); }, 350);
-      setTimeout(()=>{ osc('sine', 45, 0.2, 1.0, 18); }, 400);
-    },
-
-    
+    shoot(){ beep(720,0.08,'square',0.2); },
+    towerActivate(){ beep(440,0.25,'triangle',0.16); },
+    allTowersActivated(){ beep(660,0.35,'sawtooth',0.18); },
+    portalSpawn(){ beep(180,0.8,'sawtooth',0.2); },
+    portalEnter(){ beep(220,0.7,'square',0.2); },
+    collectItem(){ beep(880,0.2,'sine',0.18); },
+    damage(){ beep(160,0.25,'sawtooth',0.2); },
+    land(){ beep(190,0.2,'sine',0.15); },
+    enemyDie(){ beep(250,0.3,'triangle',0.18); },
+    sectorStart(){ beep(500,0.22,'square',0.18); },
+    brake(){ beep(120,0.12,'square',0.15); },
+    shipDestroy(){ beep(80,0.9,'sawtooth',0.2); },
     _musicGain: null,
     _musicNodes: [],
     _musicRunning: false,
-
     startMusic() {
       init();
       if(this._musicRunning) return;
@@ -191,8 +62,6 @@ const F = (() => {
       musicBus.connect(ctx.destination);
       this._musicGain = musicBus;
       musicBus.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.3);
-
-      
       const seq = [220, 330, 262, 392, 262, 330, 220, 440];
       let idx = 0;
       const o = ctx.createOscillator();
@@ -202,17 +71,14 @@ const F = (() => {
       og.gain.value = 0.18;
       o.connect(og); og.connect(musicBus);
       o.start();
-
       const stepMs = 180;
       const timer = setInterval(()=>{
         if(!this._musicRunning) return;
         idx = (idx + 1) % seq.length;
         o.frequency.setValueAtTime(seq[idx], ctx.currentTime);
       }, stepMs);
-
       this._musicNodes = [o, og, { stop: ()=>clearInterval(timer) }];
     },
-
     stopMusic(fadeDur=2) {
       if(!this._musicRunning || !this._musicGain) return;
       this._musicRunning = false;
@@ -226,7 +92,6 @@ const F = (() => {
         this._musicGain = null;
       }, (fadeDur+0.3)*1000);
     },
-
     unlock() { this.init = init; }
   };
 })();
@@ -2355,4 +2220,3 @@ const c = {
 };
 
 const g = new Phaser.Game(c);
-
