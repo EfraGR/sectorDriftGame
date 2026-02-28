@@ -140,7 +140,7 @@ class MenuScene extends Phaser.Scene {
 
   btn(x, y, label, color, cb){
     const t = this.addObj(
-        this.add.text(x, y, label, {
+        this.add.text(x, y, "\\u26fd", {
           fontSize:'22px', fontFamily:'Courier New', color, stroke:'#000000', strokeThickness:2
         }).setOrigin(0.5).setInteractive().setDepth(10)
     );
@@ -749,40 +749,21 @@ class GameScene extends Phaser.Scene {
   }
 
   drawFuelDepotGfx(g, x, y, level){
-    g.clear();
-
-    const colors = [0xffaa00, 0xff7700, 0xff3300];
-    const col = colors[Math.min(level-1,2)];
-    const sz = 6 + level*2;
-
-    g.fillStyle(col, 1);
-    g.fillRect(x-sz, y-sz-2, sz*2, sz*2+2);
-
-    g.fillStyle(0xffffff, 0.4);
-    g.fillRect(x-sz*0.6, y-sz-6, sz*1.2, 5);
-    g.lineStyle(1, 0x000000, 0.6);
-    g.strokeRect(x-sz, y-sz-2, sz*2, sz*2+2);
-
-    for(let i=0;i<level;i++){
-      g.lineStyle(2, 0xffffff, 0.35);
-      g.lineBetween(x-sz+2, y-sz+4+i*5, x+sz-2, y-sz+4+i*5);
-    }
-
-    g.lineStyle(1+level, col, 0.45);
-    g.strokeCircle(x, y, sz+8+level*2);
-
-    if(level>=3){
-      g.lineStyle(1, 0xff8800, 0.7);
-      g.strokeTriangle(x,y-sz-8, x-6,y-sz-2, x+6,y-sz-2);
-    }
+    g.clear(); // visuals handled via emoji text
   }
+
 
   createFuelDepot(x, y, planet){
     const level = Math.min(1 + Math.floor((this.sector-1)/2), 3);
-    const g = this.add.graphics().setDepth(4);
+    const g = this.add.text(x, y, '\u26fd', {
+      fontSize: (18 + level*2) + 'px',
+      fontFamily: 'Courier New',
+      color: '#ffaa00',
+      stroke: '#553300',
+      strokeThickness: 2
+    }).setOrigin(0.5).setDepth(4);
     const amount = 25 + level*15 + Phaser.Math.Between(0, 15);
-    this.drawFuelDepotGfx(g, x, y, level);
-    const label = this.add.text(x, y + 22 + level*2, `⛽ +${amount}`, {fontSize:'8px', fontFamily:'Courier New', color:'#ffaa00'}).setOrigin(0.5).setDepth(5);
+    const label = this.add.text(x, y + 20 + level*2, '+'+amount, {fontSize:'9px', fontFamily:'Courier New', color:'#ffaa00'}).setOrigin(0.5).setDepth(5);
     this.fuelDepots = this.fuelDepots || [];
     this.fuelDepots.push({x, y, gfx:g, label, amount, collected:false, level});
   }
@@ -2220,3 +2201,8 @@ const c = {
 };
 
 const g = new Phaser.Game(c);
+
+
+
+
+
