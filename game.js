@@ -18,66 +18,6 @@ function hasLineOfSight(x1,y1,x2,y2,planets){
   return true;
 }
 
-const _BGM = (() => {
-  let ctx = null, bus = null, running = false, _seq = null;
-  const init = () => {
-    if(!ctx) ctx = new (window.AudioContext||window.webkitAudioContext)();
-    if(ctx.state==='suspended') ctx.resume();
-  };
-  const note = (freq, t, dur, vol=0.15) => {
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'square';
-    o.frequency.value = freq;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vol, t + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.85);
-    o.connect(g); g.connect(bus);
-    o.start(t); o.stop(t + dur);
-  };
-  const bass = (freq, t, dur) => {
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'sawtooth';
-    o.frequency.value = freq / 2;
-    g.gain.setValueAtTime(0.08, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.9);
-    o.connect(g); g.connect(bus);
-    o.start(t); o.stop(t + dur);
-  };
-  // Upbeat 8-bar loop: C minor pentatonic arcade feel
-  // Notes: C4=261 Eb4=311 F4=349 G4=392 Bb4=466
-  const mel  = [392,466,523,466,392,349,392,466, 523,466,392,311,349,392,311,261];
-  const bsNt = [130,130,156,130, 130,130,156,174, 130,130,156,130, 130,174,156,130];
-  const BPM  = 160, step = 60/BPM * 0.5;
-
-  const scheduleLoop = (startT) => {
-    for(let i=0;i<mel.length;i++){
-      const t = startT + i * step;
-      note(mel[i], t, step * 0.9);
-      if(i % 2 === 0) bass(bsNt[i], t, step * 1.8);
-    }
-    const loopDur = mel.length * step;
-    _seq = setTimeout(() => { if(running) scheduleLoop(ctx.currentTime + 0.02); }, (loopDur - 0.15) * 1000);
-  };
-
-  return {
-    start() {
-      init();
-      if(running) return;
-      running = true;
-      bus = ctx.createGain();
-      bus.gain.value = 0.5;
-      bus.connect(ctx.destination);
-      scheduleLoop(ctx.currentTime + 0.1);
-    },
-    stop() {
-      running = false;
-      clearTimeout(_seq);
-      if(bus){ bus.gain.setValueAtTime(bus.gain.value, ctx.currentTime);
-        bus.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.4); }
-    }
-  };
-})();
-
 class MenuScene extends Phaser.Scene {
   constructor(){ super('Menu'); }
 
@@ -86,7 +26,6 @@ class MenuScene extends Phaser.Scene {
     this._objs = [];
     this.drawBg();
     this.showMain();
-    this.input.once('pointerdown', ()=>{ try{_BGM.start();}catch(e){} });
 
     this.input.keyboard.on('keydown', e => {
       if(e.key==='START1') this.scene.start('Game');
@@ -105,6 +44,13 @@ class MenuScene extends Phaser.Scene {
       g.fillCircle(Phaser.Math.Between(0,W),Phaser.Math.Between(0,H),sz);
     }
 
+    g.lineStyle(1,0x001133,0.4);
+    for(let x=0;x<=W;x+=28){ g.lineBetween(x,H,W/2,H*0.72); }
+    g.lineStyle(1,0x001133,0.25);
+    for(let i=0;i<8;i++){
+      const t=i/8, y=H*0.72+t*(H-H*0.72);
+      g.lineBetween(0,y,W,y);
+    }
     this._bgGfx = g;
   }
 
@@ -226,6 +172,9 @@ class GameOverScene extends Phaser.Scene {
       g.fillCircle(Phaser.Math.Between(0,W), Phaser.Math.Between(0,H), sz);
     }
 
+    g.lineStyle(1,0x001133,0.5);
+    for(let x=0;x<W;x+=32) g.lineBetween(x,H*0.7,W/2,H);
+    for(let x=0;x<W;x+=32) g.lineBetween(x,H,W/2,H*0.7);
   }
 
   buildEntryUI(){
@@ -495,11 +444,11 @@ class GameScene extends Phaser.Scene {
       this._hintBg.push(divG);
 
       const steps = [
-        { icon:'[M]', text:'Move the ship\nwith WASD' },
-        { icon:'[PL]', text:'Land on\nthe planet' },
-        { icon:'[A]', text:'Activate the\nantenna (2s)' },
-        { icon:'>>', text:'Enter the\nBlack Hole' },
-        { icon:'[W]', text:'With weapon:\npress K to shoot' },
+        { text:'Move the ship\nwith WASD' },
+        { text:'Land on\nthe planet' },
+        { text:'Activate the\nantenna (2s)' },
+        { text:'Enter the\nBlack Hole' },
+        { text:'With weapon:\npress K to shoot' },
       ];
 
       steps.forEach((step, i) => {
@@ -1257,8 +1206,8 @@ class GameScene extends Phaser.Scene {
     this.upgradePanel = this.add.graphics().setDepth(20);
     this.upgradeIcons = {};
     const upgDefs = [
-      { key:'weapon',    icon:'[W]', label:'WEAPON',   color:'#ffdd00' },
-      { key:'extraTank', icon:'[F]', label:'TANK', color:'#ff8800' },
+      { key:'weapon',    icon:'🏹', label:'WEAPON',   color:'#ffdd00' },
+      { key:'extraTank', icon:'⛽', label:'TANK', color:'#ff8800' },
     ];
     this._upgDefs = upgDefs;
 
@@ -1357,13 +1306,13 @@ class GameScene extends Phaser.Scene {
   startTutorial(){
     if(this.sector!==1) return;
     const msgs = [
-      { t:1000,  txt:'^ USE WASD / ARROWS to thrust and rotate the ship',  dur:3500 },
-      { t:5000,  txt:'[A] Land near antennas to activate them (2s)', dur:3800 },
-      { t:9500,  txt:'[W] Activate ALL antennas in the sector',                dur:3200 },
-      { t:13500, txt:'>> A BLACK HOLE appears - enter it to advance!', dur:3800 },
-      { t:18000, txt:'[L] Collect floating debris to upgrade your ship',        dur:3200 },
-      { t:22000, txt:'[F] Land on planets to recharge fuel and energy', dur:3500 },
-      { t:26000, txt:'[W] Got a weapon? Press K to shoot and defend yourself from turrets and enemies', dur:4200 },
+      { t:1000,  txt:' USE WASD / ARROWS to thrust and rotate the ship',  dur:3500 },
+      { t:5000,  txt:' Land near antennas to activate them (2s)', dur:3800 },
+      { t:9500,  txt:' Activate ALL antennas in the sector',                dur:3200 },
+      { t:13500, txt:' A BLACK HOLE appears - enter it to advance!', dur:3800 },
+      { t:18000, txt:' Collect floating debris to upgrade your ship',        dur:3200 },
+      { t:22000, txt:' Land on planets to recharge fuel and energy', dur:3500 },
+      { t:26000, txt:' Got a weapon? Press K to shoot and defend yourself from turrets and enemies', dur:4200 },
     ];
     msgs.forEach(m=>{
       this.time.delayedCall(m.t, ()=>{
@@ -1547,7 +1496,7 @@ class GameScene extends Phaser.Scene {
               if(w.type==='health'){
 
                 this.ship.health = Math.min(100, this.ship.health + 30);
-                this.showMsg('[L] +30 HEALTH RESTORED', 2000);
+                this.showMsg('+30 HEALTH RESTORED', 2000);
                 this.score += 30;
               } else {
                 this.upgrades[w.type] = Math.min(3, (this.upgrades[w.type]||0)+1);
@@ -1590,7 +1539,7 @@ class GameScene extends Phaser.Scene {
       } else {
 
         if(!this._noEnergyFlash || this._noEnergyFlash<=0){
-          this.showMsg('[W] NOT ENOUGH ENERGY TO SHOOT', 1200);
+          this.showMsg(' NOT ENOUGH ENERGY TO SHOOT', 1200);
           this._noEnergyFlash = 1.5;
         }
       }
