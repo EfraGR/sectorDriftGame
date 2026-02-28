@@ -1,4 +1,4 @@
 {
-  "game_name": "Minimalist Pong",
-  "description": "Classic Pong with 1P vs AI or 2P mode. First to 5 wins!"
+  "name": "SECTOR DRIFT",
+  "description": "Navigate your ship through deep space sectors, land on planets to activate signal antennas, and escape through black holes. Manage fuel, energy and hull integrity while dodging asteroids, enemy fighters and planet turrets. Collect upgrades to boost your weapons and survive as long as you can!"
 }
