@@ -329,7 +329,7 @@ class MenuScene extends Phaser.Scene {
   create(){
     this._page = 'main'; 
     this._objs = [];
-    this.drawBg();
+    this.cameras.main.setBackgroundColor('#000');
     this.showMain();
     
     this.input.once('pointerdown', ()=>{ try{ F.startEngine(); F.stopEngine(); }catch(e){} });
@@ -337,19 +337,6 @@ class MenuScene extends Phaser.Scene {
     this.input.keyboard.on('keydown', e => {
       if(e.key==='START1') this.scene.start('g');
     });
-  }
-
-  drawBg(){
-    const g = this.add.graphics().setDepth(0);
-    g.fillStyle(0x000000,1); g.fillRect(0,0,W,H);
-
-    for(let i=0;i<220;i++){
-      const sz=Math.random()<0.04?2:0.8;
-      g.fillStyle(0xffffff,Phaser.Math.FloatBetween(0.1,0.7));
-      g.fillCircle(Phaser.Math.Between(0,W),Phaser.Math.Between(0,H),sz);
-    }
-
-    this._bgGfx = g;
   }
 
   clearPage(){
@@ -373,76 +360,17 @@ class MenuScene extends Phaser.Scene {
 
   showMain(){
     this.clearPage();
-    
-    const t1 = this.addObj(this.add.text(W/2,148,'SECTOR',{fontSize:'72px',fontFamily:'Courier New',color:'#00ffff',stroke:'#003366',strokeThickness:4}).setOrigin(0.5).setDepth(5));
-    const t2 = this.addObj(this.add.text(W/2,222,'DRIFT', {fontSize:'72px',fontFamily:'Courier New',color:'#ff6600',stroke:'#330000',strokeThickness:4}).setOrigin(0.5).setDepth(5));
-    this.addObj(this.add.text(W/2,285,'Navigate · Land · Activate · Escape',{fontSize:'13px',fontFamily:'Courier New',color:'#556677'}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2, 200, 'SECTOR DRIFT', {
+      fontSize:'40px', fontFamily:'Courier New', color:'#00ffff'
+    }).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2, 238, 'Arcade landing roguelite', {
+      fontSize:'14px', fontFamily:'Courier New', color:'#777'
+    }).setOrigin(0.5).setDepth(5));
 
-    this.tweens.add({targets:[t1,t2],alpha:{from:0.5,to:1},duration:1400,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
+    this.btn(W/2, 300, 'PLAY', '#ffff00', ()=>this.scene.start('g'));
+    this.btn(W/2, 345, 'LEADERBOARD', '#ffcc44', ()=>this.showLeaderboard());
 
-    this.btn(W/2, 355, '▶  PLAY',          '#ffff00', ()=>this.scene.start('g'));
-    this.btn(W/2, 455, '★  LEADERBOARD',   '#ffcc44', ()=>this.showLeaderboard());
-
-    
-    this.addObj(this.add.text(W-8,H-10,'v1.0',{fontSize:'9px',fontFamily:'Courier New',color:'#223344'}).setOrigin(1,1).setDepth(5));
-  }
-
-  showInstructions(){
-    this.clearPage();
-
-    
-    this.addObj(this.add.text(W/2,28,'INSTRUCTIONS',{fontSize:'20px',fontFamily:'Courier New',color:'#44ccff',stroke:'#001133',strokeThickness:2,letterSpacing:4}).setOrigin(0.5).setDepth(5));
-    const lineG = this.addObj(this.add.graphics().setDepth(5));
-    lineG.lineStyle(1,0x224466,1); lineG.lineBetween(40,44,W-40,44);
-
-    const sections = [
-      { title:'✦ OBJECTIVE', color:'#ffff00', items:[
-          'Land near each antenna for 2s to activate it.',
-          'Activate them all and a black hole appears — enter it to advance.',
-        ]},
-      { title:'✦ CONTROLS', color:'#44ccff', items:[
-          'WASD / Arrows  →  Rotate and thrust',
-          'SPACE            →  Emergency brake',
-          'K / P1A           →  Shoot  (uses energy)',
-        ]},
-      { title:'✦ RESOURCES', color:'#00ff88', items:[
-          'Land on planets to absorb FUEL, ENERGY and HEALTH.',
-          'Collect floating fuel depots ⛽ to refuel.',
-          'If fuel hits 0 in space you have 3s before g over.',
-        ]},
-      { title:'✦ UPGRADES  (Floating debris)', color:'#ffaa44', items:[
-          '⚡ WEAPON      →  Lv1:1 shot  Lv2:2 shots  Lv3:3 shots (more dmg)',
-          '⛽ EXTRA TANK  →  +15 max fuel per level',
-          '🔧 HEALTH       →  Restores +30 HP on pickup (max 3 times)',
-        ]},
-      { title:'✦ ENEMIES', color:'#ff4444', items:[
-          '🔴 Fighter   – 1 red shot. Sector 1+',
-          '🟠 D.Fighter – 2 orange spread shots. Sector 3+',
-          '🔵 Drone     – rapid cyan burst. Sector 5+',
-          '🟣 Bomber    – slow triple purple shot. Sector 7+',
-          'Enemies dodge planets and chase your last known position.',
-        ]},
-      { title:'✦ PHYSICS', color:'#aa88ff', items:[
-          'Each planet has gravity: the closer you are the stronger the pull.',
-          'Landing at speed >80 damages the ship.',
-          'Asteroids bounce off planets and split when shot.',
-          'Bullets do not pass through planets.',
-        ]},
-    ];
-
-    let y = 60;
-    sections.forEach(sec=>{
-      this.addObj(this.add.text(30,y,sec.title,{fontSize:'12px',fontFamily:'Courier New',color:sec.color,letterSpacing:2}).setDepth(5));
-      y+=18;
-      sec.items.forEach(item=>{
-        this.addObj(this.add.text(44,y,'· '+item,{fontSize:'10px',fontFamily:'Courier New',color:'#7788aa',wordWrap:{width:W-80}}).setDepth(5));
-        y+=14;
-      });
-      y+=6;
-    });
-
-    lineG.lineBetween(40,y,W-40,y);
-    this.btn(W/2, y+30, '←  BACK', '#aaaaaa', ()=>this.showMain());
+    this.addObj(this.add.text(W-8,H-10,'v1.0',{fontSize:'9px',fontFamily:'Courier New',color:'#444'}).setOrigin(1,1).setDepth(5));
   }
 
   showLeaderboard(){
