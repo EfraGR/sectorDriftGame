@@ -1,239 +1,5 @@
 const W = 800, H = 600;
 
-const SFX = (() => {
-  let ctx = null;
-  const init = () => {
-    if(!ctx) ctx = new (window.AudioContext||window.webkitAudioContext)();
-    if(ctx.state==='suspended') ctx.resume();
-  };
-
-  let master = null;
-  const getMaster = () => {
-    init();
-    if(!master){ master = ctx.createGain(); master.gain.value = 0.55; master.connect(ctx.destination); }
-    return master;
-  };
-
-  const osc = (type, freq, gainVal, duration, freqEnd, detune=0) => {
-    const ac = ctx;
-    const g = ac.createGain();
-    g.gain.setValueAtTime(gainVal, ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration);
-    g.connect(getMaster());
-    const o = ac.createOscillator();
-    o.type = type;
-    o.frequency.setValueAtTime(freq, ac.currentTime);
-    if(freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, ac.currentTime + duration);
-    o.detune.value = detune;
-    o.connect(g);
-    o.start();
-    o.stop(ac.currentTime + duration);
-  };
-
-  const noise = (gainVal, duration, filterFreq=2000) => {
-    init();
-    const bufSize = ctx.sampleRate * duration;
-    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for(let i=0;i<bufSize;i++) data[i] = Math.random()*2-1;
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const filt = ctx.createBiquadFilter();
-    filt.type = 'bandpass';
-    filt.frequency.value = filterFreq;
-    filt.Q.value = 0.8;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(gainVal, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    src.connect(filt); filt.connect(g); g.connect(getMaster());
-    src.start(); src.stop(ctx.currentTime + duration);
-  };
-
-  let engineNode = null, engineGain = null;
-  let enginePlaying = false;
-
-  return {
-
-    startEngine() {
-      init();
-      if(enginePlaying) return;
-      enginePlaying = true;
-      engineGain = ctx.createGain();
-      engineGain.gain.setValueAtTime(0.001, ctx.currentTime);
-      engineGain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.08);
-      engineGain.connect(getMaster());
-      engineNode = ctx.createOscillator();
-      engineNode.type = 'sawtooth';
-      engineNode.frequency.value = 80;
-
-      const lfo = ctx.createOscillator();
-      const lfoGain = ctx.createGain();
-      lfo.frequency.value = 14;
-      lfoGain.gain.value = 18;
-      lfo.connect(lfoGain); lfoGain.connect(engineNode.frequency);
-      lfo.start(); engineNode.connect(engineGain); engineNode.start();
-      this._engineLfo = lfo;
-    },
-    stopEngine() {
-      if(!enginePlaying || !engineGain) return;
-      enginePlaying = false;
-      engineGain.gain.setValueAtTime(engineGain.gain.value, ctx.currentTime);
-      engineGain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.12);
-      const n = engineNode, g = engineGain, lfo = this._engineLfo;
-      setTimeout(()=>{ try{n.stop();g.disconnect();lfo.stop();}catch(e){} }, 180);
-      engineNode = null; engineGain = null;
-    },
-
-    shoot() {
-      init();
-      osc('square', 680, 0.22, 0.08, 180);
-      noise(0.12, 0.06, 3000);
-    },
-
-    towerActivate() {
-      init();
-
-      [330, 440, 660, 880].forEach((f,i) => {
-        setTimeout(()=>{ osc('sine', f, 0.28, 0.55, f*1.2); }, i*55);
-      });
-    },
-
-    allTowersActivated() {
-      init();
-
-      [262,330,392,523,659,784].forEach((f,i)=>{
-        setTimeout(()=>{ osc('triangle', f, 0.35, 0.7, f*1.05); }, i*70);
-      });
-    },
-
-    portalSpawn() {
-      init();
-
-      osc('sawtooth', 55, 0.4, 1.8, 28);
-      osc('sine',    110, 0.25, 1.4, 220);
-      setTimeout(()=>{ noise(0.2, 0.6, 400); }, 400);
-    },
-
-    portalEnter() {
-      init();
-
-      osc('sawtooth', 120, 0.5, 1.2, 2400);
-      noise(0.3, 1.0, 1200);
-      osc('sine', 220, 0.3, 1.2, 3000);
-    },
-
-    collectItem() {
-      init();
-      osc('sine', 523, 0.25, 0.25, 880);
-      osc('sine', 659, 0.18, 0.2, 1046, 0);
-    },
-
-    damage() {
-      init();
-      noise(0.35, 0.18, 180);
-      osc('sawtooth', 90, 0.3, 0.2, 60);
-    },
-
-    land() {
-      init();
-      osc('sine', 200, 0.15, 0.3, 120);
-      noise(0.08, 0.15, 600);
-    },
-
-    enemyDie() {
-      init();
-      noise(0.28, 0.3, 350);
-      osc('sawtooth', 150, 0.2, 0.3, 55);
-    },
-
-    sectorStart() {
-      init();
-
-      [880, 660, 440, 880].forEach((f,i)=>{
-        setTimeout(()=>{ osc('square', f, 0.22, 0.18); }, i*90);
-      });
-    },
-
-    brake() {
-      init();
-      noise(0.1, 0.12, 800);
-    },
-
-    shipDestroy() {
-      init();
-
-      osc('sine', 60, 0.6, 1.4, 20);
-
-      osc('sawtooth', 180, 0.45, 0.9, 40);
-
-      noise(0.5, 0.25, 2200);
-
-      setTimeout(()=>{ noise(0.3, 0.4, 600); }, 120);
-      setTimeout(()=>{ osc('sawtooth', 90, 0.25, 0.7, 30); }, 200);
-
-      setTimeout(()=>{ noise(0.18, 0.8, 200); }, 350);
-      setTimeout(()=>{ osc('sine', 45, 0.2, 1.0, 18); }, 400);
-    },
-
-    _musicGain: null,
-    _musicNodes: [],
-    _musicRunning: false,
-
-    startMusic() {
-      init();
-      if(this._musicRunning) return;
-      this._musicRunning = true;
-      const bus = ctx.createGain();
-      bus.gain.value = 0;
-      bus.connect(ctx.destination);
-      bus.gain.linearRampToValueAtTime(0.55, ctx.currentTime + 3);
-      this._musicGain = bus;
-
-      const dn = ctx.createOscillator();
-      const dg = ctx.createGain(); dg.gain.value = 0.18;
-      dn.type='sine'; dn.frequency.value=55;
-      dn.connect(dg); dg.connect(bus); dn.start();
-
-      const notes = [87.3,110,130.8,174.6,220,261.6,349.2,220,174.6,130.8,110,87.3];
-      const bpm = 72, step = 60/bpm * 0.5;
-      let ni = 0;
-      const tick = () => {
-        if(!this._musicRunning) return;
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.type = 'triangle';
-        o.frequency.value = notes[ni % notes.length];
-        g.gain.setValueAtTime(0, ctx.currentTime);
-        g.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.04);
-        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + step * 1.8);
-        o.connect(g); g.connect(bus);
-        o.start(); o.stop(ctx.currentTime + step * 2);
-        ni++;
-        this._arpTimer = setTimeout(tick, step * 1000);
-      };
-      tick();
-      this._musicNodes = [dn, dg, bus];
-    },
-
-    stopMusic(fadeDur=2) {
-      if(!this._musicRunning || !this._musicGain) return;
-      this._musicRunning = false;
-      clearTimeout(this._arpTimer);
-      const g = this._musicGain;
-      g.gain.setValueAtTime(g.gain.value, ctx.currentTime);
-      g.gain.linearRampToValueAtTime(0, ctx.currentTime + fadeDur);
-      setTimeout(()=>{
-        this._musicNodes.forEach(n=>{ try{if(n.stop)n.stop();if(n.disconnect)n.disconnect();}catch(e){} });
-        this._musicNodes=[];
-        try{g.disconnect();}catch(e){}
-        this._musicGain=null;
-      }, (fadeDur+0.3)*1000);
-    },
-
-    unlock() { this.init = init; }
-  };
-})();
-
 function dist(x1,y1,x2,y2){ return Math.sqrt((x2-x1)**2+(y2-y1)**2); }
 function angleTo(x1,y1,x2,y2){ return Math.atan2(y2-y1,x2-x1); }
 function lerp(a,b,t){ return a+(b-a)*t; }
@@ -260,9 +26,6 @@ class MenuScene extends Phaser.Scene {
     this._objs = [];
     this.drawBg();
     this.showMain();
-    try{ SFX.startMusic(); }catch(e){}
-
-    this.input.once('pointerdown', ()=>{ try{ SFX.startEngine(); SFX.stopEngine(); }catch(e){} });
 
     this.input.keyboard.on('keydown', e => {
       if(e.key==='START1') this.scene.start('Game');
@@ -616,7 +379,6 @@ class GameScene extends Phaser.Scene {
     this.createUI();
     this.createInput();
     this.sectorTransition = false;
-    SFX.startMusic();
   }
 
   generateSector(){
@@ -1597,18 +1359,15 @@ class GameScene extends Phaser.Scene {
     const s = this.ship;
     const k = this.keys;
     if(s.health<=0){
-      if(this._engineOn){ this._engineOn=false; SFX.stopEngine(); }
-      SFX.shipDestroy();
       this.scene.start('GameOver',{score:this.score,sector:this.sector,reason:'hull'});
       return;
     }
     if(s.fuel<=0){
-      if(this._engineOn){ this._engineOn=false; SFX.stopEngine(); }
       if(!this._fuelEmptyTimer) this._fuelEmptyTimer=0;
       this._fuelEmptyTimer+=dt;
       this.msgText.setText('! OUT OF FUEL - ADRIFT (' + Math.ceil(3-this._fuelEmptyTimer) + 's)');
       this.msgText.setColor('#ff4400');
-      if(this._fuelEmptyTimer>=3){ SFX.shipDestroy(); this.scene.start('GameOver',{score:this.score,sector:this.sector,reason:'fuel'}); return; }
+      if(this._fuelEmptyTimer>=3){ this.scene.start('GameOver',{score:this.score,sector:this.sector,reason:'fuel'}); return; }
     } else {
       if(this._fuelEmptyTimer){ this._fuelEmptyTimer=0; this.msgText.setColor('#ffff00'); }
     }
@@ -1639,9 +1398,6 @@ class GameScene extends Phaser.Scene {
     const thrusting = thrustPressed && !s.landed;
     s.thrusting = thrusting;
 
-    if(thrusting && s.fuel>0 && !this._engineOn){ this._engineOn=true; SFX.startEngine(); }
-    if((!thrusting || s.fuel<=0) && this._engineOn){ this._engineOn=false; SFX.stopEngine(); }
-
     if(!s.landed){
       if(rotLeft) s.angle -= dt*2.5;
       if(rotRight) s.angle += dt*2.5;
@@ -1659,7 +1415,6 @@ class GameScene extends Phaser.Scene {
       s.vx *= (1 - dt*3);
       s.vy *= (1 - dt*3);
       s.fuel = Math.max(0, s.fuel - dt*4);
-      if(!this._brakeSound){ this._brakeSound=true; SFX.brake(); }
     } else { this._brakeSound=false; }
 
     if(!s.landed){
@@ -1702,7 +1457,7 @@ class GameScene extends Phaser.Scene {
         } else {
 
           onPlanet = true;
-          if(!s.landed) SFX.land();
+          if(!s.landed)
           s.landed = true;
           s.landedPlanet = p;
           s.vx = 0; s.vy = 0;
@@ -1730,7 +1485,6 @@ class GameScene extends Phaser.Scene {
                 fd.collected = true;
                 fd.gfx.clear();
                 fd.label.setText('');
-                SFX.collectItem();
                 this.showMsg(`+${fd.amount} FUEL`, 1500);
                 this.score += 10;
               }
@@ -1739,7 +1493,6 @@ class GameScene extends Phaser.Scene {
 
           for(const w of this.wrecks){
             if(!w.collected && dist(s.x,s.y,w.x,w.y)<30){
-              SFX.collectItem();
               if(w.type==='health'){
 
                 this.ship.health = Math.min(100, this.ship.health + 30);
@@ -1797,7 +1550,6 @@ class GameScene extends Phaser.Scene {
   fireBullet(spread=0){
     const s = this.ship;
     const wlvl = this.upgrades.weapon;
-    if(spread===0) SFX.shoot();
     const speed = 320 + wlvl*30;
     const a = s.angle + spread;
     const g = this.add.graphics().setDepth(8);
@@ -1839,7 +1591,6 @@ class GameScene extends Phaser.Scene {
           e.lastKnownY = this.ship.y;
           b.gfx.destroy(); this.bullets.splice(i,1);
           if(e.hp<=0){
-            SFX.enemyDie();
             e.gfx.destroy(); this.enemies.splice(j,1);
             this.score += 100;
             this.showMsg('+100 ENEMY DESTROYED!');
@@ -1883,7 +1634,6 @@ class GameScene extends Phaser.Scene {
       if(eHitPlanet) continue;
       if(dist(b.x,b.y,this.ship.x,this.ship.y)<12){
         let dmg = 10;
-        SFX.damage();
         this.ship.health = Math.max(0, this.ship.health-dmg);
         b.gfx.destroy(); this.enemyBullets.splice(i,1);
       }
@@ -2246,9 +1996,7 @@ class GameScene extends Phaser.Scene {
     this.activeTowers++;
     this.score += 150;
     if(this.activeTowers >= this.towers.length){
-      SFX.allTowersActivated();
     } else {
-      SFX.towerActivate();
     }
     this.showMsg(`ANTENNA ACTIVATED! ${this.activeTowers}/${this.towers.length}`, 2000);
     if(this.activeTowers >= this.towers.length){
@@ -2271,7 +2019,6 @@ class GameScene extends Phaser.Scene {
     );
     this.portalX = px;
     this.portalY = py;
-    SFX.portalSpawn();
     this.showMsg('BLACK HOLE SPAWNED! Enter it.', 3000);
     this.score += 200;
   }
@@ -2309,9 +2056,6 @@ class GameScene extends Phaser.Scene {
     this.sectorTransition = true;
     this.score += 500 + this.sector*100;
     this.sector++;
-    SFX.portalEnter();
-    SFX.stopMusic(1.2);
-    if(this._engineOn){ this._engineOn=false; SFX.stopEngine(); }
 
     const flash = this.add.graphics().setDepth(50);
     flash.fillStyle(0xffffff,1); flash.fillRect(0,0,W,H);
@@ -2336,7 +2080,6 @@ class GameScene extends Phaser.Scene {
         this.activeTowers = 0;
         this.landingTimer = 0;
         this.landingTower = null;
-        SFX.sectorStart();
         this.showMsg(`SECTOR ${this.sector} STARTED!`, 2500);
 
         this.spawnShipBeacon(sp.x, sp.y);
