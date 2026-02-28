@@ -437,31 +437,9 @@ class GameOverScene extends Phaser.Scene {
     this.submitted = false;
     this.scores = this.loadScores();
     this.phase = 'entry'; 
-
-    this.drawBg();
+    this.cameras.main.setBackgroundColor('#000');
     this.buildEntryUI();
-
-    
     this.input.keyboard.on('keydown', e => this.handleKey(e));
-  }
-
-  drawBg(){
-    const g = this.add.graphics();
-    g.fillStyle(0x000000,1); g.fillRect(0,0,W,H);
-    
-    for(let y=0;y<H;y+=4){
-      g.fillStyle(0x000011, 0.35); g.fillRect(0,y,W,2);
-    }
-    
-    for(let i=0;i<200;i++){
-      const sz=Math.random()<0.05?1.5:0.8;
-      g.fillStyle(0xffffff, Phaser.Math.FloatBetween(0.1,0.6));
-      g.fillCircle(Phaser.Math.Between(0,W), Phaser.Math.Between(0,H), sz);
-    }
-    
-    g.lineStyle(1,0x001133,0.5);
-    for(let x=0;x<W;x+=32) g.lineBetween(x,H*0.7,W/2,H);
-    for(let x=0;x<W;x+=32) g.lineBetween(x,H,W/2,H*0.7);
   }
 
   buildEntryUI(){
@@ -469,20 +447,12 @@ class GameOverScene extends Phaser.Scene {
     const col = this.reason==='fuel' ? '#ffaa00' : '#ff4422';
 
     
-    const title = this.add.text(W/2, 55, msg, {
-      fontSize:'22px', fontFamily:'Courier New', color:col,
-      stroke:'#000000', strokeThickness:3
-    }).setOrigin(0.5);
-    this.tweens.add({targets:title, alpha:{from:0.6,to:1}, duration:180, yoyo:true, repeat:-1});
+    this.add.text(W/2, 80, msg, {fontSize:'20px', fontFamily:'Courier New', color:col}).setOrigin(0.5);
+    this.add.text(W/2, 115, `SCORE ${this.finalScore}`, {fontSize:'20px', fontFamily:'Courier New', color:'#ffff00'}).setOrigin(0.5);
+    this.add.text(W/2, 142, `SECTOR ${this.sector}`, {fontSize:'13px', fontFamily:'Courier New', color:'#888'}).setOrigin(0.5);
 
-    
-    this.add.text(W/2, 98, `SCORE`, {fontSize:'11px', fontFamily:'Courier New', color:'#445566', letterSpacing:4}).setOrigin(0.5);
-    this.add.text(W/2, 118, `${this.finalScore}`, {fontSize:'36px', fontFamily:'Courier New', color:'#ffff00', stroke:'#555500', strokeThickness:3}).setOrigin(0.5);
-    this.add.text(W/2, 158, `SECTOR ${this.sector}`, {fontSize:'14px', fontFamily:'Courier New', color:'#4488aa'}).setOrigin(0.5);
-
-    
-    this.add.text(W/2, 200, 'ENTER YOUR NAME', {fontSize:'13px', fontFamily:'Courier New', color:'#aaccff', letterSpacing:3}).setOrigin(0.5);
-    this.add.text(W/2, 218, '↑↓ CHANGE  ←→ CURSOR  ENTER CONFIRM', {fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:1}).setOrigin(0.5);
+    this.add.text(W/2, 190, 'ENTER NAME', {fontSize:'12px', fontFamily:'Courier New', color:'#88ccff'}).setOrigin(0.5);
+    this.add.text(W/2, 210, '↑↓ LETTER  ←→ MOVE  ENTER SAVE', {fontSize:'9px', fontFamily:'Courier New', color:'#444'}).setOrigin(0.5);
 
     
     this._letterObjs = [];
@@ -512,15 +482,8 @@ class GameOverScene extends Phaser.Scene {
     const g = this._cursorGfx;
     g.clear();
     const x = W/2 + (this.cursor-1)*52;
-    g.lineStyle(3, 0x00ffff, 0.8);
-    g.strokeRect(x-22, 238, 44, 50);
-    
-    g.lineStyle(2, 0x00ffff, 0.5);
-    [[x-22,238],[x+22,238],[x-22,288],[x+22,288]].forEach(([cx,cy],i)=>{
-      const sx=i%2===0?1:-1, sy=i<2?1:-1;
-      g.lineBetween(cx,cy,cx+sx*8,cy);
-      g.lineBetween(cx,cy,cx,cy+sy*8);
-    });
+    g.lineStyle(2, 0x00ffff, 0.9);
+    g.strokeRect(x-24, 236, 48, 54);
   }
 
   drawLeaderboardPreview(){
@@ -528,7 +491,7 @@ class GameOverScene extends Phaser.Scene {
     this._lbGroup=[];
     const scores = this.scores.slice(0,8);
 
-    const hdr = this.add.text(W/2, 340, '—  HALL OF FAME  —', {fontSize:'11px', fontFamily:'Courier New', color:'#335566', letterSpacing:4}).setOrigin(0.5);
+    const hdr = this.add.text(W/2, 330, 'HALL OF FAME', {fontSize:'12px', fontFamily:'Courier New', color:'#55aaff', letterSpacing:2}).setOrigin(0.5);
     this._lbGroup.push(hdr);
 
     scores.forEach((s,i)=>{
