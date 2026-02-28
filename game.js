@@ -390,7 +390,6 @@ class MenuScene extends Phaser.Scene {
     this.tweens.add({targets:[t1,t2],alpha:{from:0.5,to:1},duration:1400,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
 
     this.btn(W/2, 355, '▶  PLAY',          '#ffff00', ()=>this.scene.start('g'));
-    this.btn(W/2, 405, '?  INSTRUCTIONS',  '#44ccff', ()=>this.showInstructions());
     this.btn(W/2, 455, '★  LEADERBOARD',   '#ffcc44', ()=>this.showLeaderboard());
 
     
@@ -801,69 +800,6 @@ class GameScene extends Phaser.Scene {
     
     if(this._hintBg) this._hintBg.forEach(o=>{ try{o.destroy();}catch(e){} });
     this._hintBg = [];
-    if(s===1){
-      const panelX = W - 148;
-      const panelY = H/2 - 110;
-      const panelW = 138;
-      const panelH = 266;
-
-      
-      const panelGfx = this.add.graphics().setDepth(8);
-      panelGfx.fillStyle(0x001122, 0.82);
-      panelGfx.fillRoundedRect(panelX, panelY, panelW, panelH, 6);
-      panelGfx.lineStyle(1, 0x0055aa, 0.7);
-      panelGfx.strokeRoundedRect(panelX, panelY, panelW, panelH, 6);
-      this._hintBg.push(panelGfx);
-
-      
-      const header = this.add.text(panelX + panelW/2, panelY + 14, '[ TUTORIAL ]', {
-        fontSize:'9px', fontFamily:'Courier New', color:'#44ccff', letterSpacing:3
-      }).setOrigin(0.5).setDepth(9);
-      this._hintBg.push(header);
-
-      
-      const divG = this.add.graphics().setDepth(9);
-      divG.lineStyle(1, 0x003366, 0.8);
-      divG.lineBetween(panelX+8, panelY+24, panelX+panelW-8, panelY+24);
-      this._hintBg.push(divG);
-
-      const steps = [
-        { icon:'🚀', text:'Move the ship\nwith WASD' },
-        { icon:'🪐', text:'Land on\nthe planet' },
-        { icon:'📡', text:'Activate the\nantenna (2s)' },
-        { icon:'🌀', text:'Enter the\nBlack Hole' },
-        { icon:'⚡', text:'With weapon:\npress K to shoot' },
-      ];
-
-      steps.forEach((step, i) => {
-        const sy = panelY + 38 + i * 46;
-        const iconObj = this.add.text(panelX + 14, sy + 4, step.icon, {
-          fontSize:'18px'
-        }).setOrigin(0, 0.5).setDepth(9);
-        const textObj = this.add.text(panelX + 38, sy, step.text, {
-          fontSize:'10px', fontFamily:'Courier New', color:'#88bbdd',
-          lineSpacing: 3, wordWrap:{width: panelW - 46}
-        }).setOrigin(0, 0.5).setDepth(9);
-        
-        const numG = this.add.graphics().setDepth(9);
-        numG.fillStyle(0x0055aa, 0.7);
-        numG.fillCircle(panelX + 14, sy + 4, 9);
-        numG.lineStyle(1, 0x0088ff, 0.6);
-        numG.strokeCircle(panelX + 14, sy + 4, 9);
-        const numTxt = this.add.text(panelX + 14, sy + 4, `${i+1}`, {
-          fontSize:'9px', fontFamily:'Courier New', color:'#ffffff'
-        }).setOrigin(0.5).setDepth(10);
-        this._hintBg.push(iconObj, textObj, numG, numTxt);
-      });
-
-      
-      this.time.delayedCall(16000, ()=>{
-        if(this._hintBg && this.sector===1){
-          this._hintBg.forEach(o=>{ this.tweens.add({targets:o, alpha:0, duration:3000}); });
-        }
-      });
-    }
-
     const numPlanets = s===1 ? 1 : Math.min(2+Math.floor(s/2.5), 6);
     const numTowers  = s===1 ? 1 : Math.min(1+Math.ceil(s*0.92), numPlanets*2);
 
@@ -2610,3 +2546,4 @@ const c = {
 };
 
 const g = new Phaser.Game(c);
+
