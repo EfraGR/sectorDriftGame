@@ -4,6 +4,71 @@ function dist(x1,y1,x2,y2){ return Math.sqrt((x2-x1)**2+(y2-y1)**2); }
 function gr(x1,y1,x2,y2){ return Math.atan2(y2-y1,x2-x1); }
 function lerp(a,b,t){ return a+(b-a)*t; }
 
+const music = (()=>{
+  let ctx, master, loopId, mode='menu', started=false;
+  const pat = {
+    menu:[0,4,7,9,7,4,2,4],
+    game:[0,2,3,5,7,10,7,5,3,2]
+  };
+
+  function ensure(){
+    if(ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    ctx = new AC();
+    master = ctx.createGain();
+    master.gain.value = 0.08;
+    master.connect(ctx.destination);
+  }
+
+  function note(freq, dur, start, type){
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001,start);
+    g.gain.exponentialRampToValueAtTime(type==='sine'?0.08:0.12,start+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,start+dur);
+    o.connect(g); g.connect(master);
+    o.start(start); o.stop(start+dur+0.05);
+  }
+
+  function run(newMode){
+    ensure(); if(!ctx) return;
+    if(ctx.state==='suspended') ctx.resume();
+    if(loopId) clearInterval(loopId);
+    mode = newMode;
+    let step = 0;
+    const seq = pat[mode] || pat.menu;
+    const bpm = mode==='menu'?86:112;
+    const beat = 60 / bpm;
+    loopId = setInterval(()=>{
+      const t = ctx.currentTime + 0.02;
+      const semi = seq[step % seq.length];
+      const f = 220 * Math.pow(2, semi/12);
+      note(f, beat*0.7, t, mode==='menu'?'sine':'sawtooth');
+      if(step % 4 === 0) note(f/2, beat*1.2, t, 'square');
+      step++;
+    }, beat*1000);
+  }
+
+  function startOnce(){
+    ensure();
+    if(ctx && ctx.state==='suspended') ctx.resume();
+    if(started) return;
+    started = true;
+    run('menu');
+  }
+
+  function setMode(m){
+    if(!started) startOnce();
+    if(m===mode) return;
+    run(m);
+  }
+
+  return { startOnce, setMode };
+})();
+
 function dk(x1,y1,x2,y2,cm){
   for(const p of cm){
 
@@ -24,6 +89,9 @@ class ba extends Phaser.Scene {
   create(){
     this.ga = 'main'; // 'main' | 'instructions' | 'leaderboard'
     this.aq = [];
+    music.setMode('menu');
+    this.input.once('pointerdown', ()=>music.startOnce());
+    if(this.input.keyboard) this.input.keyboard.once('keydown', ()=>music.startOnce());
     this.drawBg();
     this.showMain();
   }
@@ -78,8 +146,8 @@ class ba extends Phaser.Scene {
 
     this.tweens.add({targets:[t1,t2],alpha:{from:0.5,to:1},duration:1400,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
 
-    this.btn(W/2, 355, '▶  JUGAR',          '#ffff00', ()=>this.scene.start('Game'));
-    this.btn(W/2, 405, '?  INSTRUCCIONES',  '#44ccff', ()=>this.showInstructions());
+    this.btn(W/2, 355, '▶  PLAY',          '#ffff00', ()=>this.scene.start('Game'));
+    this.btn(W/2, 405, '?  INSTRUCTIONS',  '#44ccff', ()=>this.showInstructions());
     this.btn(W/2, 455, '★  LEADERBOARD',   '#ffcc44', ()=>this.showLeaderboard());
 
     // Version blip
@@ -90,28 +158,28 @@ class ba extends Phaser.Scene {
     this.clearPage();
 
     // Title bar
-    this.addObj(this.add.text(W/2,28,'INSTRUCCIONES',{fontSize:'20px',fontFamily:'Courier New',color:'#44ccff',stroke:'#001133',strokeThickness:2,letterSpacing:4}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2,28,'INSTRUCTIONS',{fontSize:'20px',fontFamily:'Courier New',color:'#44ccff',stroke:'#001133',strokeThickness:2,letterSpacing:4}).setOrigin(0.5).setDepth(5));
     const du = this.addObj(this.add.graphics().setDepth(5));
     du.lineStyle(1,0x224466,1); du.lineBetween(40,44,W-40,44);
 
     const bz = [
-      { gj:'OBJETIVO', color:'#ffff00', items:[
-        'Aterriza junto a cada antena 2s para activarla. Al activar todas, entra al agujero negro.',
+      { gj:'GOAL', color:'#ffff00', items:[
+        'Land next to each antenna for 2s to activate it. When all are active, enter the black hole.',
       ]},
-      { gj:'CONTROLES', color:'#44ccff', items:[
-        'WASD/Flechas: rotar y propulsar  |  ESPACIO: freno  |  F/Ctrl/Clic: disparar',
+      { gj:'CONTROLS', color:'#44ccff', items:[
+        'WASD/Arrows: rotate & thrust  |  SPACE: brake  |  F/Ctrl/Click: shoot',
       ]},
-      { gj:'RECURSOS', color:'#00ff88', items:[
-        'Aterriza en planetas: recarga combustible, energia y salud. Sin combustible tienes 3s.',
+      { gj:'RESOURCES', color:'#00ff88', items:[
+        'Land on planets to refuel, recharge energy, and heal. Out of fuel: 3s to drift.',
       ]},
-      { gj:'MEJORAS (restos flotantes)', color:'#ffaa44', items:[
-        'ARMA: +1 bala por nivel (max 3)  |  TANQUE: +15 combustible max  |  SALUD: +30 HP',
+      { gj:'UPGRADES (debris)', color:'#ffaa44', items:[
+        'WEAPON: +1 bullet per level (max 3)  |  TANK: +15 fuel max  |  HEALTH: +30 HP',
       ]},
-      { gj:'ENEMIGOS', color:'#ff4444', items:[
-        'Fighter S1+ | D.Fighter S3+ | Drone S5+ | Bomber S7+  — persiguen tu ultima posicion',
+      { gj:'ENEMIES', color:'#ff4444', items:[
+        'Fighter S1+ | D.Fighter S3+ | Drone S5+ | Bomber S7+ — they chase your last position.',
       ]},
-      { gj:'FISICA', color:'#aa88ff', items:[
-        'Gravedad planetaria. Aterrizaje >80 dania. Asteroides se parten al dispararlos.',
+      { gj:'PHYSICS', color:'#aa88ff', items:[
+        'Planet gravity. Landing speed >80 hurts. Asteroids split when shot.',
       ]},
     ];
 
@@ -127,7 +195,7 @@ class ba extends Phaser.Scene {
     });
 
     du.lineBetween(40,y,W-40,y);
-    this.btn(W/2, y+30, '←  VOLVER', '#aaaaaa', ()=>this.showMain());
+    this.btn(W/2, y+30, '←  BACK', '#aaaaaa', ()=>this.showMain());
   }
 
   showLeaderboard(){
@@ -141,8 +209,8 @@ class ba extends Phaser.Scene {
 
     // Column headers
     this.addObj(this.add.text(W/2-130,64,'#',      {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0.5).setDepth(5));
-    this.addObj(this.add.text(W/2-88, 64,'NOMBRE', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
-    this.addObj(this.add.text(W/2+16, 64,'PUNTOS', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
+    this.addObj(this.add.text(W/2-88, 64,'NAME', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
+    this.addObj(this.add.text(W/2+16, 64,'SCORE', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
     this.addObj(this.add.text(W/2+108,64,'SECT',   {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5).setDepth(5));
     du.lineBetween(40,74,W-40,74);
 
@@ -151,7 +219,7 @@ class ba extends Phaser.Scene {
 
     const gg = ['🥇','🥈','🥉'];
     if(ac.length===0){
-      this.addObj(this.add.text(W/2,200,'SIN REGISTROS AÚN\nJuega para aparecer aquí',{fontSize:'14px',fontFamily:'Courier New',color:'#223344',align:'center'}).setOrigin(0.5).setDepth(5));
+      this.addObj(this.add.text(W/2,200,'NO RECORDS YET\nPlay to appear here',{fontSize:'14px',fontFamily:'Courier New',color:'#223344',align:'center'}).setOrigin(0.5).setDepth(5));
     } else {
       ac.slice(0,10).forEach((s,i)=>{
         const y = 90+i*34;
@@ -171,7 +239,7 @@ class ba extends Phaser.Scene {
       });
     }
 
-    const cz = this.addObj(this.add.text(W/2-70,H-55,'[ BORRAR ]',{fontSize:'13px',fontFamily:'Courier New',color:'#553333'}).setOrigin(0.5).setDepth(5).setInteractive());
+    const cz = this.addObj(this.add.text(W/2-70,H-55,'[ CLEAR ]',{fontSize:'13px',fontFamily:'Courier New',color:'#553333'}).setOrigin(0.5).setDepth(5).setInteractive());
     cz.on('pointerover',()=>cz.setColor('#ff4444'));
     cz.on('pointerout', ()=>cz.setColor('#553333'));
     cz.on('pointerdown',()=>{
@@ -179,7 +247,7 @@ class ba extends Phaser.Scene {
       this.showLeaderboard();
     });
 
-    this.btn(W/2+70, H-55, '←  VOLVER', '#aaaaaa', ()=>this.showMain());
+    this.btn(W/2+70, H-55, '←  BACK', '#aaaaaa', ()=>this.showMain());
   }
 }
 
@@ -188,6 +256,7 @@ class gm extends Phaser.Scene {
   init(data){ this.dj=data.cj||0; this.dy=data.dy||1; this.al=data.al||'hull'; }
 
   create(){
+    music.setMode('menu');
     this.cr = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
     this.ek = [0,0,0]; // 3 char name
     this.fh = 0;
@@ -222,10 +291,10 @@ class gm extends Phaser.Scene {
   }
 
   buildEntryUI(){
-    const msg = this.al==='fuel' ? '★  SIN COMBUSTIBLE  ★' : '★  NAVE DESTRUIDA  ★';
+    const msg = this.al==='fuel' ? '★  OUT OF FUEL  ★' : '★  SHIP DESTROYED  ★';
     const col = this.al==='fuel' ? '#ffaa00' : '#ff4422';
 
-    // Death al — glitchy flicker
+    // Death alert — glitchy flicker
     const gj = this.add.text(W/2, 55, msg, {
       fontSize:'22px', fontFamily:'Courier New', color:col,
       stroke:'#000000', strokeThickness:3
@@ -233,13 +302,13 @@ class gm extends Phaser.Scene {
     this.tweens.add({targets:gj, alpha:{from:0.6,to:1}, duration:180, yoyo:true, repeat:-1});
 
     // Score
-    this.add.text(W/2, 98, `PUNTUACIÓN`, {fontSize:'11px', fontFamily:'Courier New', color:'#445566', letterSpacing:4}).setOrigin(0.5);
+    this.add.text(W/2, 98, `SCORE`, {fontSize:'11px', fontFamily:'Courier New', color:'#445566', letterSpacing:4}).setOrigin(0.5);
     this.add.text(W/2, 118, `${this.dj}`, {fontSize:'36px', fontFamily:'Courier New', color:'#ffff00', stroke:'#555500', strokeThickness:3}).setOrigin(0.5);
     this.add.text(W/2, 158, `SECTOR ${this.dy}`, {fontSize:'14px', fontFamily:'Courier New', color:'#4488aa'}).setOrigin(0.5);
 
     // Entry prompt
-    this.add.text(W/2, 200, 'INGRESA TU NOMBRE', {fontSize:'13px', fontFamily:'Courier New', color:'#aaccff', letterSpacing:3}).setOrigin(0.5);
-    this.add.text(W/2, 218, '↑↓ CAMBIAR  ←→ CURSOR  ENTER CONFIRMAR', {fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:1}).setOrigin(0.5);
+    this.add.text(W/2, 200, 'ENTER YOUR NAME', {fontSize:'13px', fontFamily:'Courier New', color:'#aaccff', letterSpacing:3}).setOrigin(0.5);
+    this.add.text(W/2, 218, '↑↓ CHANGE  ←→ MOVE  ENTER CONFIRM', {fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:1}).setOrigin(0.5);
 
     // 3-char letter picker
     this.ha = [];
@@ -259,7 +328,7 @@ class gm extends Phaser.Scene {
     this.drawLeaderboardPreview();
 
     // Submit button hint
-    this.bs = this.add.text(W/2, 320, '▶  ENTER PARA REGISTRAR  ◀', {
+    this.bs = this.add.text(W/2, 320, '▶  ENTER TO SUBMIT  ◀', {
       fontSize:'12px', fontFamily:'Courier New', color:'#44ff88', letterSpacing:2
     }).setOrigin(0.5);
     this.tweens.add({targets:this.bs, alpha:{from:0.3,to:1}, duration:600, yoyo:true, repeat:-1});
@@ -299,7 +368,7 @@ class gm extends Phaser.Scene {
     });
 
     if(ac.length===0){
-      const bj = this.add.text(W/2,380,'SIN REGISTROS AÚN',{fontSize:'12px',fontFamily:'Courier New',color:'#223344'}).setOrigin(0.5);
+      const bj = this.add.text(W/2,380,'NO RECORDS YET',{fontSize:'12px',fontFamily:'Courier New',color:'#223344'}).setOrigin(0.5);
       this.er.push(bj);
     }
   }
@@ -330,7 +399,7 @@ class gm extends Phaser.Scene {
     this.ac = this.loadScores();
 
     // Flash dq
-    this.bs.setText('✦  REGISTRADO  ✦').setColor('#ffff00');
+    this.bs.setText('✦  SUBMITTED  ✦').setColor('#ffff00');
     this.aj.clear();
     this.ha.forEach((l,i)=>{ l.setColor('#ffff00'); });
 
@@ -356,8 +425,8 @@ class gm extends Phaser.Scene {
 
     // Column headers
     this.add.text(W/2-130, 70, '#', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0.5);
-    this.add.text(W/2-85, 70, 'NOMBRE', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
-    this.add.text(W/2+20, 70, 'PUNTOS', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
+    this.add.text(W/2-85, 70, 'NAME', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
+    this.add.text(W/2+20, 70, 'SCORE', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
     this.add.text(W/2+105, 70, 'SECT', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
     du.lineBetween(W/2-160,80,W/2+160,80);
 
@@ -384,12 +453,12 @@ class gm extends Phaser.Scene {
 
     du.lineBetween(W/2-160, 96+10*34-8, W/2+160, 96+10*34-8);
 
-    const cg = this.add.text(W/2-80, H-60, '[ REINTENTAR ]', {fontSize:'16px', fontFamily:'Courier New', color:'#44ff88', stroke:'#002200', strokeThickness:2}).setOrigin(0.5).setInteractive();
+    const cg = this.add.text(W/2-80, H-60, '[ RETRY ]', {fontSize:'16px', fontFamily:'Courier New', color:'#44ff88', stroke:'#002200', strokeThickness:2}).setOrigin(0.5).setInteractive();
     cg.on('pointerover',()=>cg.setColor('#ffffff'));
     cg.on('pointerout',()=>cg.setColor('#44ff88'));
     cg.on('pointerdown',()=>this.scene.start('Game'));
 
-    const menu = this.add.text(W/2+80, H-60, '[ MENÚ ]', {fontSize:'16px', fontFamily:'Courier New', color:'#aaaaaa'}).setOrigin(0.5).setInteractive();
+    const menu = this.add.text(W/2+80, H-60, '[ MENU ]', {fontSize:'16px', fontFamily:'Courier New', color:'#aaaaaa'}).setOrigin(0.5).setInteractive();
     menu.on('pointerover',()=>menu.setColor('#ffffff'));
     menu.on('pointerout',()=>menu.setColor('#aaaaaa'));
     menu.on('pointerdown',()=>this.scene.start('Menu'));
@@ -428,6 +497,7 @@ class eq extends Phaser.Scene {
 
   create(){
     this.cameras.main.setBackgroundColor('#00000f');
+    music.setMode('game');
     this.generateSector();
     this.createShip();
     this.createUI();
@@ -502,10 +572,10 @@ class eq extends Phaser.Scene {
       this.fq.push(divG);
 
       const ay = [
-        { icon:'🚀', text:'Mueve la nave\ncon WASD' },
-        { icon:'🪐', text:'Aterriza en\nel planeta' },
-        { icon:'📡', text:'Activa la\nantena (2 seg)' },
-        { icon:'🌀', text:'Entra al\nAgujero Negro' },
+        { icon:'🚀', text:'Move the ship\nwith WASD' },
+        { icon:'🪐', text:'Land on\nthe planet' },
+        { icon:'📡', text:'Activate the\nantenna (2s)' },
+        { icon:'🌐', text:'Enter the\nBLACK HOLE' },
       ];
 
       ay.forEach((step, i) => {
@@ -1171,7 +1241,7 @@ class eq extends Phaser.Scene {
     // Top-left: cj, dy, eg
     this.cw  = this.add.text(10, 10, 'SCORE: 0',   {fontSize:'12px',fontFamily:'Courier New',color:'#aaddff'}).setDepth(20);
     this.bt = this.add.text(10, 26, 'SECTOR: 1',  {fontSize:'12px',fontFamily:'Courier New',color:'#aaddff'}).setDepth(20);
-    this.fp = this.add.text(10, 42, 'TORRES: 0/0',{fontSize:'12px',fontFamily:'Courier New',color:'#ffff88'}).setDepth(20);
+    this.fp = this.add.text(10, 42, 'TOWERS: 0/0',{fontSize:'12px',fontFamily:'Courier New',color:'#ffff88'}).setDepth(20);
 
     // Bottom-center: messages
     this.fa = this.add.text(W/2, H-22, '', {fontSize:'13px',fontFamily:'Courier New',color:'#ffff00',stroke:'#333300',strokeThickness:2}).setOrigin(0.5).setDepth(20);
@@ -1182,13 +1252,13 @@ class eq extends Phaser.Scene {
     this.fl = this.add.graphics().setDepth(20);
     this.dp = {};
     const aa = [
-      { key:'weapon',    icon:'⚡', bk:'ARMA',   color:'#ffdd00' },
-      { key:'extraTank', icon:'⛽', bk:'TANQUE', color:'#ff8800' },
+      { key:'weapon',    icon:'⚡', bk:'WEAPON', color:'#ffdd00' },
+      { key:'extraTank', icon:'⛽', bk:'TANK',   color:'#ff8800' },
     ];
     this.ff = aa;
 
     // Panel gj
-    this.dr = this.add.text(W-8, H-86, 'MÓDULOS', {
+    this.dr = this.add.text(W-8, H-86, 'MODULES', {
       fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:2
     }).setOrigin(1, 0.5).setDepth(22);
 
@@ -1207,7 +1277,7 @@ class eq extends Phaser.Scene {
     const g = this.bq;
     g.clear();
 
-    // ── Bottom-left resource bars ──────────────────────────────
+    // ---- Bottom-left resource bars ----
     // Layout: icon | bar | value, stacked vertically
     const bx = 10, bw = 100, bh = 7, gap = 14;
     const dw = 100 + (this.gy.extraTank||0)*15;
@@ -1215,7 +1285,7 @@ class eq extends Phaser.Scene {
     const bars = [
       { bk:'FUEL', val:s.fuel,   max:dw, fill:0xffaa00, bg:0x332200, border:0x664400 },
       { bk:'ENRG', val:s.energy, max:100,     fill:0x00ddff, bg:0x002233, border:0x005566 },
-      { bk:'VIDA', val:s.health, max:100,
+      { bk:'HP', val:s.health, max:100,
         fill: s.health>50 ? 0x00ff44 : s.health>25 ? 0xffaa00 : 0xff3300,
         bg:0x220000, border:0x550000 },
     ];
@@ -1234,13 +1304,13 @@ class eq extends Phaser.Scene {
 
     this.cw.setText(`SCORE: ${this.cj}`);
     this.bt.setText(`SECTOR: ${this.dy}`);
-    this.fp.setText(`TORRES: ${this.an}/${this.eg.length}`);
+    this.fp.setText(`TOWERS: ${this.an}/${this.eg.length}`);
 
     if(!this.ak){
       this.ak = [
         this.add.text(bx, H-59, 'FUEL', {fontSize:'7px',fontFamily:'Courier New',color:'#ffaa00'}).setDepth(21),
         this.add.text(bx, H-59+gap, 'ENRG', {fontSize:'7px',fontFamily:'Courier New',color:'#00ddff'}).setDepth(21),
-        this.add.text(bx, H-59+gap*2, 'VIDA', {fontSize:'7px',fontFamily:'Courier New',color:'#00ff44'}).setDepth(21),
+        this.add.text(bx, H-59+gap*2, 'HP', {fontSize:'7px',fontFamily:'Courier New',color:'#00ff44'}).setDepth(21),
       ];
       // numeric values as dynamic texts
       this.et = [
@@ -1256,7 +1326,7 @@ class eq extends Phaser.Scene {
       this.et[2].setText(Math.ceil(s.health)+'/100');
     }
 
-    // ── Bottom-right upgrade panel ─────────────────────────────
+    // ---- Bottom-right upgrade panel ----
     const pg = this.fl;
     pg.clear();
     const df = (this.gy.weapon||0)+(this.gy.extraTank||0) > 0;
@@ -1289,12 +1359,12 @@ class eq extends Phaser.Scene {
   startTutorial(){
     if(this.dy!==1) return;
     const msgs = [
-      { t:1000,  txt:'⬆ USA WASD / FLECHAS para propulsar y rotar la nave',  dur:3500 },
-      { t:5000,  txt:'📡 Aterriza cerca de las antenas para activarlas (2 seg)', dur:3800 },
-      { t:9500,  txt:'⚡ Activa TODAS las antenas del dy',                dur:3200 },
-      { t:13500, txt:'🌀 Luego aparece un AGUJERO NEGRO — ¡entra para avanzar!', dur:3800 },
-      { t:18000, txt:'🔧 Recoge restos flotantes para mejorar tu nave',        dur:3200 },
-      { t:22000, txt:'⛽ Aterriza en planetas para recargar combustible y energía', dur:3500 },
+      { t:1000,  txt:'⬆ Use WASD / ARROWS to thrust and rotate',  dur:3500 },
+      { t:5000,  txt:'📡 Land near antennas to activate them (2s)', dur:3800 },
+      { t:9500,  txt:'⚡ Activate ALL antennas in the sector',                dur:3200 },
+      { t:13500, txt:'🌐 A BLACK HOLE will appear — enter to advance!', dur:3800 },
+      { t:18000, txt:'🔧 Collect floating debris to upgrade your ship',        dur:3200 },
+      { t:22000, txt:'⛽ Land on planets to refuel and recharge energy', dur:3500 },
     ];
     msgs.forEach(m=>{
       this.time.delayedCall(m.t, ()=>{
@@ -1310,9 +1380,9 @@ class eq extends Phaser.Scene {
   }
 
   showUpgradePopup(type, ez=1){
-    const ed = {weapon:'ARMAMENTO', extraTank:'TANQUE EXTRA', health:'SALUD'};
+    const ed = {weapon:'WEAPONRY', extraTank:'EXTRA TANK', health:'HEALTH'};
     const cf = '★'.repeat(ez)+'☆'.repeat(3-ez);
-    this.showMsg(`✦ ${ed[type]||type}  ${cf}  ADQUIRIDO`, 2500);
+    this.showMsg(`✦ ${ed[type]||type}  ${cf}  ACQUIRED`, 2500);
     this.cj += 50;
   }
 
@@ -1342,7 +1412,7 @@ class eq extends Phaser.Scene {
     if(s.fuel<=0){
       if(!this.aw) this.aw=0;
       this.aw+=dt;
-      this.fa.setText('⚠ SIN COMBUSTIBLE — A LA DERIVA (' + Math.ceil(3-this.aw) + 's)');
+      this.fa.setText('⚠ OUT OF FUEL — DRIFTING (' + Math.ceil(3-this.aw) + 's)');
       this.fa.setColor('#ff4400');
       if(this.aw>=3){ this.scene.start('GameOver',{cj:this.cj,dy:this.dy,al:'fuel'}); return; }
     } else {
@@ -1461,7 +1531,7 @@ class eq extends Phaser.Scene {
                 fd.collected = true;
                 fd.gfx.clear();
                 fd.bk.setText('');
-                this.showMsg(`+${fd.cy} COMBUSTIBLE`, 1500);
+                this.showMsg(`+${fd.cy} FUEL`, 1500);
                 this.cj += 10;
               }
             }
@@ -1472,7 +1542,7 @@ class eq extends Phaser.Scene {
               if(w.type==='health'){
                 // consumable: just restore HP
                 this.ship.health = Math.min(100, this.ship.health + 30);
-                this.showMsg('🔧 +30 SALUD RESTAURADA', 2000);
+                this.showMsg('🔧 +30 HEALTH RESTORED', 2000);
                 this.cj += 30;
               } else {
                 this.gy[w.type] = Math.min(3, (this.gy[w.type]||0)+1);
@@ -1515,7 +1585,7 @@ class eq extends Phaser.Scene {
       } else {
 
         if(!this.fn || this.fn<=0){
-          this.showMsg('⚡ SIN ENERGÍA PARA DISPARAR', 1200);
+          this.showMsg('⚡ NOT ENOUGH ENERGY TO SHOOT', 1200);
           this.fn = 1.5;
         }
       }
@@ -1569,7 +1639,7 @@ class eq extends Phaser.Scene {
           if(e.hp<=0){
             e.gfx.destroy(); this.gx.splice(j,1);
             this.cj += 100;
-            this.showMsg('+100 ENEMIGO DESTRUIDO!');
+          this.showMsg('+100 ENEMY DESTROYED!');
           }
           break;
         }
@@ -1585,7 +1655,7 @@ class eq extends Phaser.Scene {
           if(t.hp<=0){
             t.gfx.destroy(); this.gt.splice(j,1);
             this.cj += 75;
-            this.showMsg("+75 TORRETA DESTRUIDA!");
+            this.showMsg("+75 TURRET DESTROYED!");
           }
           break;
         }
@@ -1972,7 +2042,7 @@ class eq extends Phaser.Scene {
     t.timer.clear();
     this.an++;
     this.cj += 150;
-    this.showMsg(`TORRE ACTIVADA! ${this.an}/${this.eg.length}`, 2000);
+    this.showMsg(`TOWER ACTIVATED! ${this.an}/${this.eg.length}`, 2000);
     if(this.an >= this.eg.length){
       this.spawnPortal();
     }
@@ -1993,7 +2063,7 @@ class eq extends Phaser.Scene {
     );
     this.fu = px;
     this.bw = py;
-    this.showMsg('¡AGUJERO NEGRO GENERADO! Entra en él.', 3000);
+    this.showMsg('BLACK HOLE SPAWNED! Enter it.', 3000);
     this.cj += 200;
   }
 
@@ -2021,7 +2091,7 @@ class eq extends Phaser.Scene {
     pg.fillCircle(px,py,10);
 
     if(!this.fs){
-      this.fs = this.add.text(this.fu,this.bw-45,'AGUJERO NEGRO',{fontSize:'10px',fontFamily:'Courier New',color:'#aa44ff'}).setOrigin(0.5).setDepth(8);
+      this.fs = this.add.text(this.fu,this.bw-45,'BLACK HOLE',{fontSize:'10px',fontFamily:'Courier New',color:'#aa44ff'}).setOrigin(0.5).setDepth(8);
     }
   }
 
@@ -2054,7 +2124,7 @@ class eq extends Phaser.Scene {
         this.an = 0;
         this.bi = 0;
         this.fr = null;
-        this.showMsg(`SECTOR ${this.dy} INICIADO!`, 2500);
+        this.showMsg(`SECTOR ${this.dy} STARTED!`, 2500);
       }
     });
   }
@@ -2071,3 +2141,4 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
+
