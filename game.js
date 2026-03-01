@@ -6,9 +6,13 @@ function lerp(a,b,t){ return a+(b-a)*t; }
 
 const music = (()=>{
   let ctx, master, loopId, mode='menu', started=false;
-  const pat = {
+  const patLead = {
     menu:[0,5,9,12,9,5,2,5],
-    game:[0,3,7,10,14,10,7,3,5,12,17,12,7,3]
+    game:[0,3,7,10,14,17,14,10,7,3,5,12,15,12,7,3]
+  };
+  const patBass = {
+    menu:[0,-5,-3,-7],
+    game:[0,0,-5,-3,-7,-10,-5,-3]
   };
 
   function ensure(){
@@ -17,17 +21,16 @@ const music = (()=>{
     if(!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = 0.24;
+    master.gain.value = 0.28;
     master.connect(ctx.destination);
   }
 
-  function note(freq, dur, start, type){
+  function blip(freq, dur, start, type, peak){
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     o.type = type;
     o.frequency.value = freq;
     g.gain.setValueAtTime(0.0001,start);
-    const peak = type==='sine'?0.08:0.16;
     g.gain.exponentialRampToValueAtTime(peak,start+0.01);
     g.gain.exponentialRampToValueAtTime(0.0001,start+dur);
     o.connect(g); g.connect(master);
@@ -40,27 +43,34 @@ const music = (()=>{
     if(loopId) clearInterval(loopId);
     mode = newMode;
     let step = 0;
-    const seq = pat[mode] || pat.menu;
-    const bpm = mode==='menu'?110:150;
+    const lead = patLead[mode] || patLead.menu;
+    const bass = patBass[mode] || patBass.menu;
+    const bpm = mode==='menu'?118:170;
     const beat = 60 / bpm;
+    const tick = beat*0.5; // 8th notes for drive
+
     loopId = setInterval(()=>{
-      const t = ctx.currentTime + 0.02;
-      const semi = seq[step % seq.length];
-      const f = 220 * Math.pow(2, semi/12);
-      const base = f * (mode==='game' ? 1 + (Math.random()*0.02-0.01) : 1);
+      const t = ctx.currentTime + 0.015;
+      const lsemi = lead[step % lead.length];
+      const bsemi = bass[step % bass.length];
+      const baseF = mode==='menu'?196:246;
+      const lf = baseF * Math.pow(2, lsemi/12);
+      const bf = 82 * Math.pow(2, bsemi/12);
+
       if(mode==='menu'){
-        note(base, beat*0.65, t, 'square');
-        note(base*2, beat*0.35, t+beat*0.05, 'triangle');
-        if(step % 3 === 0) note(base/2, beat*0.8, t, 'sine');
+        blip(lf, tick*0.8, t, 'square', 0.16);
+        if(step%2===0) blip(lf*2, tick*0.45, t+tick*0.05, 'triangle', 0.11);
+        if(step%4===0) blip(bf, tick*1.1, t, 'sine', 0.09);
       } else {
-        note(base, beat*0.45, t, 'sawtooth');            // lead
-        note(base*2, beat*0.25, t+beat*0.02, 'square');  // bright octave
-        note(base/2, beat*0.35, t, 'sine');              // bass
-        if(step % 2 === 0) note(120, beat*0.18, t, 'triangle'); // hi blip
-        if(step % 3 === 0) note(90, beat*0.2, t, 'sine');       // kick pulse
+        blip(lf, tick*0.6, t, 'sawtooth', 0.22);           // lead
+        blip(lf*2, tick*0.35, t+tick*0.04, 'square', 0.16); // octave spark
+        blip(bf, tick*0.9, t, 'sine', 0.18);               // bass
+        if(step%2===0) blip(160, tick*0.25, t, 'triangle', 0.14); // hats-ish
+        if(step%2===0) blip(68, tick*0.28, t, 'sine', 0.22);      // kick thump
+        if(step%4===0) blip(420+Math.random()*60, tick*0.18, t+tick*0.08, 'square', 0.12); // perk
       }
       step++;
-    }, beat*1000);
+    }, tick*1000);
   }
 
   function startOnce(){
@@ -77,7 +87,15 @@ const music = (()=>{
     run(m);
   }
 
-  return { startOnce, setMode };
+  function shot(){
+    ensure(); if(!ctx) return;
+    if(ctx.state==='suspended') ctx.resume();
+    const t = ctx.currentTime + 0.005;
+    blip(1800, 0.15, t, 'square', 0.3);
+    blip(320, 0.2, t, 'sine', 0.18);
+  }
+
+  return { startOnce, setMode, shot };
 })();
 
 function dk(x1,y1,x2,y2,cm){
@@ -1689,7 +1707,7 @@ class eq extends Phaser.Scene {
     const wlvl = this.gy.weapon;
     const di = wlvl>=3 ? 0.12 : wlvl>=2 ? 0.20 : 0.30;
     const ag = wlvl>=3 ? 4 : wlvl>=2 ? 3 : 2;
-    if(wlvl>0 && (k.fire.isDown||k.ctrl.isDown||k.shift.isDown||this.ds) && this.ca<=0 && !s.landed){
+    if(wlvl>0 && (k.fire.isDown||k.ctrl.isDown||k.shift.isDown||this.ds) && this.ca<=0){
       if(s.energy>=ag){
         s.energy = Math.max(0, s.energy - ag);
         this.fireBullet();
@@ -1719,6 +1737,7 @@ class eq extends Phaser.Scene {
     g.fillStyle(0xffffff,0.4); g.fillCircle(0,0,ec*0.5);
     g.x = s.x; g.y = s.y;
     const dmg = wlvl>=3 ? 1.5 : wlvl>=2 ? 1 : 0.5;
+    music.shot();
     this.da.push({ x:s.x, y:s.y, vx:Math.cos(a)*gl+s.vx, vy:Math.sin(a)*gl+s.vy, gfx:g, life:2, dmg });
   }
 
@@ -2228,9 +2247,9 @@ class eq extends Phaser.Scene {
         if(this.dy===1) this.startTutorial();
 
         const ey = 100 + (this.gy.extraTank||0)*15;
-        this.ship.fuel = Math.min(ey, this.ship.fuel+20);
-        this.ship.energy = Math.min(100, this.ship.energy+15);
-        this.ship.health = Math.min(100, this.ship.health+20);
+        this.ship.fuel = ey;
+        this.ship.energy = 100;
+        this.ship.health = 100;
         const sp = this.findSafeSpawn();
         this.ship.x = sp.x; this.ship.y = sp.y;
         this.ship.vx = 0; this.ship.vy = 0;
