@@ -637,7 +637,7 @@ class eq extends Phaser.Scene {
       const gc = W - 148;
       const fc = H/2 - 110;
       const ab = 138;
-      const gi = 220;
+      const gi = 280;
 
       // Panel background
       const gh = this.add.graphics().setDepth(8);
@@ -660,10 +660,11 @@ class eq extends Phaser.Scene {
       this.fq.push(divG);
 
       const ay = [
-        { icon:'🚀', text:'Move the ship\nwith WASD' },
-        { icon:'🪐', text:'Land on\nthe planet' },
-        { icon:'📡', text:'Activate the\nantenna (2s)' },
-        { icon:'🌐', text:'Enter the\nBLACK HOLE' },
+        { icon:' 🚀', text:'  Move the ship\n with WASD' },
+        { icon:' 🪐', text:'  Land on\n the planet' },
+        { icon:' 📡', text:'  Activate the\n antenna (2s)' },
+        { icon:' 🌐', text:'  Enter the\n  BLACK HOLE' },
+        { icon:' 🏹', text:'  If you get a\n gun shoot with \'K\'' },
       ];
 
       ay.forEach((step, i) => {
@@ -1304,7 +1305,7 @@ class eq extends Phaser.Scene {
       s: Phaser.Input.Keyboard.KeyCodes.S,
       d: Phaser.Input.Keyboard.KeyCodes.D,
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      fire: Phaser.Input.Keyboard.KeyCodes.F,
+      fire: Phaser.Input.Keyboard.KeyCodes.K,
       ctrl: Phaser.Input.Keyboard.KeyCodes.CTRL,
       shift: Phaser.Input.Keyboard.KeyCodes.SHIFT
     });
