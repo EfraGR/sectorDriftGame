@@ -591,6 +591,7 @@ class eq extends Phaser.Scene {
     this.createUI();
     this.createInput();
     this.de = false;
+    this.showShipLocator();
   }
 
   generateSector(){
@@ -2214,6 +2215,41 @@ class eq extends Phaser.Scene {
         this.bi = 0;
         this.fr = null;
         this.showMsg(`SECTOR ${this.dy} STARTED!`, 2500);
+        this.showShipLocator();
+      }
+    });
+  }
+
+  showShipLocator(){
+    if(this.locTimer){ this.locTimer.remove(false); this.locTimer=null; }
+    if(this.locG){ this.locG.destroy(); this.locG=null; }
+    if(this.locLabel){ this.locLabel.destroy(); this.locLabel=null; }
+
+    const g = this.add.graphics().setDepth(40);
+    const lbl = this.add.text(this.ship.x, this.ship.y-28, 'YOU', {
+      fontSize:'11px', fontFamily:'Courier New', color:'#00ffff', stroke:'#001122', strokeThickness:2
+    }).setOrigin(0.5).setDepth(40);
+    this.locG = g; this.locLabel = lbl;
+
+    const start = this.time.now;
+    this.locTimer = this.time.addEvent({
+      delay: 70,
+      repeat: 40, // ~3s
+      callback: ()=>{
+        const phase = ((this.time.now - start)/700) % 1;
+        const r = 12 + phase*26;
+        const a = 0.8 - phase*0.8;
+        g.clear();
+        g.lineStyle(2, 0x00ffff, a);
+        g.strokeCircle(this.ship.x, this.ship.y, r);
+        g.lineStyle(1, 0xffffff, a*0.7);
+        g.strokeCircle(this.ship.x, this.ship.y, r*0.55);
+        lbl.setPosition(this.ship.x, this.ship.y-28);
+        lbl.setAlpha(0.6 + 0.35*Math.sin(this.time.now/180));
+        if(this.locTimer.getRepeatCount()===0){
+          g.destroy(); lbl.destroy();
+          this.locTimer=null; this.locG=null; this.locLabel=null;
+        }
       }
     });
   }
@@ -2230,4 +2266,3 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
-
