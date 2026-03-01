@@ -116,7 +116,7 @@ class ba extends Phaser.Scene {
   constructor(){ super('Menu'); }
 
   create(){
-    this.ga = 'main'; // 'main' | 'instructions' | 'leaderboard'
+    this.ga = 'main';
     this.aq = [];
     this.menuItems = [];
     this.sel = 0;
@@ -210,16 +210,16 @@ class ba extends Phaser.Scene {
         'Land next to each antenna for 2s to activate it. When all are active, enter the black hole.',
       ]},
       { gj:'CONTROLS', color:'#44ccff', items:[
-        'WASD/Arrows: rotate & thrust  |  SPACE: brake  |  K: shoot',
+        'WASD/Arrows: rotate & thrust|SPACE: brake|K: shoot',
       ]},
       { gj:'RESOURCES', color:'#00ff88', items:[
         'Land on planets to refuel, recharge energy, and heal. Out of fuel: 3s to drift.',
       ]},
       { gj:'UPGRADES (debris)', color:'#ffaa44', items:[
-        'WEAPON: +1 bullet per level (max 3)  |  TANK: +15 fuel max  |  HEALTH: +30 HP',
+        'WEAPON: +1 bullet per level (max 3)|TANK: +15 fuel max|  HEALTH: +30 HP',
       ]},
       { gj:'ENEMIES', color:'#ff4444', items:[
-        'Fighter S1+ | D.Fighter S3+ | Drone S5+ | Bomber S7+ — they chase your last position.',
+        'Fighter S1+|D.Fighter S3+|Drone S5+|Bomber S7+ — they chase your last position.',
       ]},
       { gj:'PHYSICS', color:'#aa88ff', items:[
         'Planet gravity. Landing speed >80 hurts. Asteroids split when shot.',
@@ -339,11 +339,11 @@ class gm extends Phaser.Scene {
   create(){
     music.setMode('menu');
     this.cr = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
-    this.ek = [0,0,0]; // 3 char name
+    this.ek = [0,0,0];
     this.fh = 0;
     this.dq = false;
     this.ac = this.loadScores();
-    this.gf = 'entry'; // 'entry' | 'board'
+    this.gf = 'entry';
     this.sel = 0;
 
     this.drawBg();
@@ -383,16 +383,14 @@ class gm extends Phaser.Scene {
     }).setOrigin(0.5);
     this.tweens.add({targets:gj, alpha:{from:0.6,to:1}, duration:180, yoyo:true, repeat:-1});
 
-    // Score
     this.add.text(W/2, 98, `SCORE`, {fontSize:'11px', fontFamily:'Courier New', color:'#445566', letterSpacing:4}).setOrigin(0.5);
     this.add.text(W/2, 118, `${this.dj}`, {fontSize:'36px', fontFamily:'Courier New', color:'#ffff00', stroke:'#555500', strokeThickness:3}).setOrigin(0.5);
     this.add.text(W/2, 158, `SECTOR ${this.dy}`, {fontSize:'14px', fontFamily:'Courier New', color:'#4488aa'}).setOrigin(0.5);
 
-    // Entry prompt
+
     this.add.text(W/2, 200, 'ENTER YOUR NAME', {fontSize:'13px', fontFamily:'Courier New', color:'#aaccff', letterSpacing:3}).setOrigin(0.5);
     this.add.text(W/2, 218, '↑↓ CHANGE  ←→ MOVE  ENTER CONFIRM', {fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:1}).setOrigin(0.5);
 
-    // 3-char letter picker
     this.ha = [];
     this.aj = this.add.graphics().setDepth(5);
     for(let i=0;i<3;i++){
@@ -405,7 +403,6 @@ class gm extends Phaser.Scene {
     }
     this.redrawCursor();
 
-    // Leaderboard preview (bottom half)
     this.er = [];
     this.drawLeaderboardPreview();
 
@@ -522,7 +519,7 @@ class gm extends Phaser.Scene {
     this.add.text(W/2+105, 70, 'SECT', {fontSize:'10px',fontFamily:'Courier New',color:'#334455',letterSpacing:2}).setOrigin(0,0.5);
     du.lineBetween(W/2-160,80,W/2+160,80);
 
-    const gg = ['🥇','🥈','🥉'];
+    const gg = ['1','2','3'];
     ac.slice(0,10).forEach((s,i)=>{
       const y = 96 + i*34;
       const ae = i<3;
@@ -692,11 +689,11 @@ class eq extends Phaser.Scene {
       this.fq.push(divG);
 
       const ay = [
-        { icon:' 🚀', text:'  Move the ship\n with WASD' },
-        { icon:' 🪐', text:'  Land on\n the planet' },
-        { icon:' 📡', text:'  Activate the\n antenna (2s)' },
-        { icon:' 🌐', text:'  Enter the\n  BLACK HOLE' },
-        { icon:' 🏹', text:'  If you get a\n gun shoot with \'K\'' },
+        { icon:' ', text:'  Move the ship\n with WASD' },
+        { icon:' ', text:'  Land on\n the planet' },
+        { icon:' ', text:'  Activate the\n antenna (2s)' },
+        { icon:' ', text:'  Enter the\n  BLACK HOLE' },
+        { icon:' ', text:'  If you get a\n gun shoot with \'K\'' },
       ];
 
       ay.forEach((step, i) => {
