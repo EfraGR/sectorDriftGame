@@ -89,9 +89,12 @@ class ba extends Phaser.Scene {
   create(){
     this.ga = 'main'; // 'main' | 'instructions' | 'leaderboard'
     this.aq = [];
+    this.menuItems = [];
+    this.sel = 0;
     music.setMode('menu');
     this.input.once('pointerdown', ()=>music.startOnce());
     if(this.input.keyboard) this.input.keyboard.once('keydown', ()=>music.startOnce());
+    this.input.keyboard.on('keydown', e=>this.handleMenuKeys(e));
     this.drawBg();
     this.showMain();
   }
@@ -138,6 +141,7 @@ class ba extends Phaser.Scene {
   }
 
   showMain(){
+    this.ga = 'main';
     this.clearPage();
     // Title
     const t1 = this.addObj(this.add.text(W/2,148,'SECTOR',{fontSize:'72px',fontFamily:'Courier New',color:'#00ffff',stroke:'#003366',strokeThickness:4}).setOrigin(0.5).setDepth(5));
@@ -146,16 +150,26 @@ class ba extends Phaser.Scene {
 
     this.tweens.add({targets:[t1,t2],alpha:{from:0.5,to:1},duration:1400,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
 
-    this.btn(W/2, 355, '▶  PLAY',          '#ffff00', ()=>this.scene.start('Game'));
-    this.btn(W/2, 405, '?  INSTRUCTIONS',  '#44ccff', ()=>this.showInstructions());
-    this.btn(W/2, 455, '★  LEADERBOARD',   '#ffcc44', ()=>this.showLeaderboard());
+    this.menuItems = [
+      this.btn(W/2, 355, '▶  PLAY',          '#ffff00', ()=>this.scene.start('Game')),
+      this.btn(W/2, 405, '?  INSTRUCTIONS',  '#44ccff', ()=>this.showInstructions()),
+      this.btn(W/2, 455, '★  LEADERBOARD',   '#ffcc44', ()=>this.showLeaderboard()),
+    ];
+    this.sel = 0;
+    this.refreshMenuSel();
+    this.addObj(this.add.text(W/2, 520, 'Use W/S or arrows, press Enter to select', {
+      fontSize:'11px', fontFamily:'Courier New', color:'#334455'
+    }).setOrigin(0.5).setDepth(5));
 
     // Version blip
     this.addObj(this.add.text(W-8,H-10,'v1.0',{fontSize:'9px',fontFamily:'Courier New',color:'#223344'}).setOrigin(1,1).setDepth(5));
   }
 
   showInstructions(){
+    this.ga = 'instructions';
     this.clearPage();
+    this.menuItems = [];
+    this.sel = 0;
 
     // Title bar
     this.addObj(this.add.text(W/2,28,'INSTRUCTIONS',{fontSize:'20px',fontFamily:'Courier New',color:'#44ccff',stroke:'#001133',strokeThickness:2,letterSpacing:4}).setOrigin(0.5).setDepth(5));
@@ -195,11 +209,16 @@ class ba extends Phaser.Scene {
     });
 
     du.lineBetween(40,y,W-40,y);
-    this.btn(W/2, y+30, '←  BACK', '#aaaaaa', ()=>this.showMain());
+    const backBtn = this.btn(W/2, y+30, '←  BACK', '#aaaaaa', ()=>this.showMain());
+    this.menuItems = [backBtn];
+    this.refreshMenuSel();
   }
 
   showLeaderboard(){
+    this.ga = 'leaderboard';
     this.clearPage();
+    this.menuItems = [];
+    this.sel = 0;
 
     this.addObj(this.add.text(W/2,28,'✦  HALL OF FAME  ✦',{fontSize:'22px',fontFamily:'Courier New',color:'#ffdd00',stroke:'#443300',strokeThickness:3}).setOrigin(0.5).setDepth(5));
 
@@ -239,15 +258,48 @@ class ba extends Phaser.Scene {
       });
     }
 
-    const cz = this.addObj(this.add.text(W/2-70,H-55,'[ CLEAR ]',{fontSize:'13px',fontFamily:'Courier New',color:'#553333'}).setOrigin(0.5).setDepth(5).setInteractive());
-    cz.on('pointerover',()=>cz.setColor('#ff4444'));
-    cz.on('pointerout', ()=>cz.setColor('#553333'));
-    cz.on('pointerdown',()=>{
+    const clearBtn = this.addObj(this.add.text(W/2-70,H-55,'[ CLEAR ]',{fontSize:'13px',fontFamily:'Courier New',color:'#553333'}).setOrigin(0.5).setDepth(5).setInteractive());
+    clearBtn.on('pointerover',()=>clearBtn.setColor('#ff4444'));
+    clearBtn.on('pointerout', ()=>clearBtn.setColor('#553333'));
+    clearBtn.on('pointerdown',()=>{
       try{ localStorage.removeItem('spaceSectorsLB'); }catch(e){}
       this.showLeaderboard();
     });
 
-    this.btn(W/2+70, H-55, '←  BACK', '#aaaaaa', ()=>this.showMain());
+    const backBtn = this.btn(W/2+70, H-55, '←  BACK', '#aaaaaa', ()=>this.showMain());
+    this.menuItems = [clearBtn, backBtn];
+    this.refreshMenuSel();
+  }
+
+  refreshMenuSel(){
+    if(!this.menuItems || this.menuItems.length===0) return;
+    this.menuItems.forEach((b,i)=>{
+      if(!b._baseColor) b._baseColor = b.style.color;
+      const base = b._baseColor;
+      if(i===this.sel){
+        b.setColor('#ffffff').setScale(1.08);
+      } else {
+        b.setColor(base).setScale(1);
+      }
+    });
+  }
+
+  handleMenuKeys(e){
+    const k = e.key;
+    if(!this.menuItems || this.menuItems.length===0) return;
+    if(k==='w'||k==='W'||k==='ArrowUp'){
+      this.sel = (this.sel-1+this.menuItems.length)%this.menuItems.length;
+      this.refreshMenuSel();
+      return;
+    }
+    if(k==='s'||k==='S'||k==='ArrowDown'){
+      this.sel = (this.sel+1)%this.menuItems.length;
+      this.refreshMenuSel();
+      return;
+    }
+    if(k==='Enter'||k===' '){
+      if(this.menuItems[this.sel]) this.menuItems[this.sel].emit('pointerdown');
+    }
   }
 }
 
@@ -263,6 +315,7 @@ class gm extends Phaser.Scene {
     this.dq = false;
     this.ac = this.loadScores();
     this.gf = 'entry'; // 'entry' | 'board'
+    this.sel = 0;
 
     this.drawBg();
     this.buildEntryUI();
@@ -376,18 +429,27 @@ class gm extends Phaser.Scene {
   handleKey(e){
     if(this.dq) return;
     const k = e.key;
-    if(k==='ArrowUp'||k==='w'||k==='W'){
-      this.ek[this.fh]=(this.ek[this.fh]+1)%this.cr.length;
-      this.ha[this.fh].setText(this.cr[this.ek[this.fh]]);
-    } else if(k==='ArrowDown'||k==='s'||k==='S'){
-      this.ek[this.fh]=(this.ek[this.fh]-1+this.cr.length)%this.cr.length;
-      this.ha[this.fh].setText(this.cr[this.ek[this.fh]]);
-    } else if(k==='ArrowRight'||k==='d'||k==='D'){
-      this.fh=Math.min(2,this.fh+1); this.redrawCursor();
-    } else if(k==='ArrowLeft'||k==='a'||k==='A'){
-      this.fh=Math.max(0,this.fh-1); this.redrawCursor();
-    } else if(k==='Enter'||k===' '){
-      this.submitScore();
+    if(this.gf==='entry'){
+      if(k==='ArrowUp'||k==='w'||k==='W'){
+        this.ek[this.fh]=(this.ek[this.fh]+1)%this.cr.length;
+        this.ha[this.fh].setText(this.cr[this.ek[this.fh]]);
+      } else if(k==='ArrowDown'||k==='s'||k==='S'){
+        this.ek[this.fh]=(this.ek[this.fh]-1+this.cr.length)%this.cr.length;
+        this.ha[this.fh].setText(this.cr[this.ek[this.fh]]);
+      } else if(k==='ArrowRight'||k==='d'||k==='D'){
+        this.fh=Math.min(2,this.fh+1); this.redrawCursor();
+      } else if(k==='ArrowLeft'||k==='a'||k==='A'){
+        this.fh=Math.max(0,this.fh-1); this.redrawCursor();
+      } else if(k==='Enter'||k===' '){
+        this.submitScore();
+      }
+    } else if(this.gf==='board'){
+      if(k==='ArrowUp'||k==='w'||k==='W'||k==='ArrowDown'||k==='s'||k==='S'||k==='a'||k==='A'||k==='d'||k==='D'||k==='ArrowLeft'||k==='ArrowRight'){
+        this.sel = 1 - this.sel;
+        this.refreshBoardSel();
+      } else if(k==='Enter'||k===' '){
+        this.activateBoardSel();
+      }
     }
   }
 
@@ -408,6 +470,7 @@ class gm extends Phaser.Scene {
 
   showFullBoard(){
     // Clear everything, show full leaderboard
+    this.dq = false; // allow keyboard navigation on this screen
     this.children.list.slice(0).forEach(o=>{
       if(o.type==='Graphics'||o.type==='Text') try{ o.destroy(); }catch(e){}
     });
@@ -465,6 +528,31 @@ class gm extends Phaser.Scene {
 
     // Blinking fh on buttons
     this.tweens.add({targets:[cg,menu], alpha:{from:0.7,to:1}, duration:800, yoyo:true, repeat:-1});
+    this.boardItems = [cg, menu];
+    this.sel = 0;
+    this.gf = 'board';
+    this.boardHint = this.add.text(W/2, H-32, 'Use W/S or arrows, press Enter to select', {
+      fontSize:'10px', fontFamily:'Courier New', color:'#445566', letterSpacing:1
+    }).setOrigin(0.5).setDepth(5);
+    this.refreshBoardSel();
+  }
+
+  refreshBoardSel(){
+    if(!this.boardItems) return;
+    this.boardItems.forEach((b,i)=>{
+      if(!b._baseColor) b._baseColor = b.style.color;
+      const base = b._baseColor;
+      if(i===this.sel){
+        b.setColor('#ffffff').setScale(1.08);
+      } else {
+        b.setColor(base).setScale(1);
+      }
+    });
+  }
+
+  activateBoardSel(){
+    if(!this.boardItems || !this.boardItems[this.sel]) return;
+    this.boardItems[this.sel].emit('pointerdown');
   }
 
   loadScores(){
