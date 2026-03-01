@@ -7,8 +7,8 @@ function lerp(a,b,t){ return a+(b-a)*t; }
 const music = (()=>{
   let ctx, master, loopId, mode='menu', started=false;
   const pat = {
-    menu:[0,4,7,9,7,4,2,4],
-    game:[0,2,3,5,7,10,7,5,3,2]
+    menu:[0,5,9,12,9,5,2,5],
+    game:[0,3,7,10,14,10,7,3,5,12,17,12,7,3]
   };
 
   function ensure(){
@@ -17,7 +17,7 @@ const music = (()=>{
     if(!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = 0.08;
+    master.gain.value = 0.24;
     master.connect(ctx.destination);
   }
 
@@ -27,7 +27,8 @@ const music = (()=>{
     o.type = type;
     o.frequency.value = freq;
     g.gain.setValueAtTime(0.0001,start);
-    g.gain.exponentialRampToValueAtTime(type==='sine'?0.08:0.12,start+0.01);
+    const peak = type==='sine'?0.08:0.16;
+    g.gain.exponentialRampToValueAtTime(peak,start+0.01);
     g.gain.exponentialRampToValueAtTime(0.0001,start+dur);
     o.connect(g); g.connect(master);
     o.start(start); o.stop(start+dur+0.05);
@@ -40,14 +41,24 @@ const music = (()=>{
     mode = newMode;
     let step = 0;
     const seq = pat[mode] || pat.menu;
-    const bpm = mode==='menu'?86:112;
+    const bpm = mode==='menu'?110:150;
     const beat = 60 / bpm;
     loopId = setInterval(()=>{
       const t = ctx.currentTime + 0.02;
       const semi = seq[step % seq.length];
       const f = 220 * Math.pow(2, semi/12);
-      note(f, beat*0.7, t, mode==='menu'?'sine':'sawtooth');
-      if(step % 4 === 0) note(f/2, beat*1.2, t, 'square');
+      const base = f * (mode==='game' ? 1 + (Math.random()*0.02-0.01) : 1);
+      if(mode==='menu'){
+        note(base, beat*0.65, t, 'square');
+        note(base*2, beat*0.35, t+beat*0.05, 'triangle');
+        if(step % 3 === 0) note(base/2, beat*0.8, t, 'sine');
+      } else {
+        note(base, beat*0.45, t, 'sawtooth');            // lead
+        note(base*2, beat*0.25, t+beat*0.02, 'square');  // bright octave
+        note(base/2, beat*0.35, t, 'sine');              // bass
+        if(step % 2 === 0) note(120, beat*0.18, t, 'triangle'); // hi blip
+        if(step % 3 === 0) note(90, beat*0.2, t, 'sine');       // kick pulse
+      }
       step++;
     }, beat*1000);
   }
@@ -581,6 +592,8 @@ class eq extends Phaser.Scene {
     this.cj = 0;
 
     this.gy = { weapon:0, extraTank:0 };
+    this.lowFuelWarn = false;
+    this.lowFuelTimer = 0;
   }
 
   create(){
@@ -1552,6 +1565,17 @@ class eq extends Phaser.Scene {
       s.vx *= (1 - dt*3);
       s.vy *= (1 - dt*3);
       s.fuel = Math.max(0, s.fuel - dt*4);
+    }
+
+    if(s.fuel>0 && s.fuel<20){
+      const now = this.time.now;
+      if(!this.lowFuelWarn || now - this.lowFuelTimer > 3000){
+        this.showMsg('⚠ LOW FUEL – FIND A PLANET', 1600);
+        this.lowFuelWarn = true;
+        this.lowFuelTimer = now;
+      }
+    } else {
+      this.lowFuelWarn = false;
     }
 
     if(!s.landed){
