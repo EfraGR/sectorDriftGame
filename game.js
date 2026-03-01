@@ -338,7 +338,7 @@ class gm extends Phaser.Scene {
 
   create(){
     music.setMode('menu');
-    this.cr = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
+    this.cr = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
     this.ek = [0,0,0];
     this.fh = 0;
     this.dq = false;
@@ -389,7 +389,6 @@ class gm extends Phaser.Scene {
 
 
     this.add.text(W/2, 200, 'ENTER YOUR NAME', {fontSize:'13px', fontFamily:'Courier New', color:'#aaccff', letterSpacing:3}).setOrigin(0.5);
-    this.add.text(W/2, 218, '↑↓ CHANGE  ←→ MOVE  ENTER CONFIRM', {fontSize:'8px', fontFamily:'Courier New', color:'#334455', letterSpacing:1}).setOrigin(0.5);
 
     this.ha = [];
     this.aj = this.add.graphics().setDepth(5);
