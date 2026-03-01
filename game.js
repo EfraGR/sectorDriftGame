@@ -172,7 +172,7 @@ class ba extends Phaser.Scene {
     this.sel = 0;
 
     // Title bar
-    this.addObj(this.add.text(W/2,28,'INSTRUCTIONS',{fontSize:'20px',fontFamily:'Courier New',color:'#44ccff',stroke:'#001133',strokeThickness:2,letterSpacing:4}).setOrigin(0.5).setDepth(5));
+    this.addObj(this.add.text(W/2,28,'INSTRUCTIONS',{fontSize:'40px',fontFamily:'Courier New',color:'#44ccff',stroke:'#001133',strokeThickness:3,letterSpacing:4}).setOrigin(0.5).setDepth(5));
     const du = this.addObj(this.add.graphics().setDepth(5));
     du.lineStyle(1,0x224466,1); du.lineBetween(40,44,W-40,44);
 
@@ -181,7 +181,7 @@ class ba extends Phaser.Scene {
         'Land next to each antenna for 2s to activate it. When all are active, enter the black hole.',
       ]},
       { gj:'CONTROLS', color:'#44ccff', items:[
-        'WASD/Arrows: rotate & thrust  |  SPACE: brake  |  F/Ctrl/Click: shoot',
+        'WASD/Arrows: rotate & thrust  |  SPACE: brake  |  K: shoot',
       ]},
       { gj:'RESOURCES', color:'#00ff88', items:[
         'Land on planets to refuel, recharge energy, and heal. Out of fuel: 3s to drift.',
@@ -197,15 +197,15 @@ class ba extends Phaser.Scene {
       ]},
     ];
 
-    let y = 60;
+    let y = 82;
     bz.forEach(sec=>{
-      this.addObj(this.add.text(30,y,sec.gj,{fontSize:'11px',fontFamily:'Courier New',color:sec.color,letterSpacing:2}).setDepth(5));
-      y+=15;
+      this.addObj(this.add.text(30,y,sec.gj,{fontSize:'26px',fontFamily:'Courier New',color:sec.color,letterSpacing:2}).setDepth(5));
+      y+=32;
       sec.items.forEach(item=>{
-        this.addObj(this.add.text(44,y,'· '+item,{fontSize:'10px',fontFamily:'Courier New',color:'#7788aa',wordWrap:{width:W-80}}).setDepth(5));
-        y+=13;
+        this.addObj(this.add.text(44,y,'· '+item,{fontSize:'20px',fontFamily:'Courier New',color:'#7788aa',wordWrap:{width:W-80},lineSpacing:4}).setDepth(5));
+        y+=26;
       });
-      y+=5;
+      y+=14;
     });
 
     du.lineBetween(40,y,W-40,y);
